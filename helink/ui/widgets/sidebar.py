@@ -43,6 +43,7 @@ class Sidebar(QFrame):
         logo_path = (
                         Path(__file__).resolve().parents[2]
                         / 'assets'
+                        / 'images'
                         / 'helink_logo.png'
             
                     )

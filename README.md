@@ -48,7 +48,8 @@ helink/
 |   |-- repositories/           SQLite persistence operations
 |   |-- services/               Import, reporting, map and database services
 |   |-- ui/                     Windows, pages, tabs, dialogs and widgets
-|   `-- assets/                 Offline map resources
+|   |-- assets/images           Helink logo and icon
+|   `-- assets/map              Offline map resources
 ```
 
 ## Installation
@@ -156,3 +157,14 @@ The `.gitignore` excludes generated or local files such as:
 ## Application version
 
 HELINK 2026 - v1.0
+
+## Copyright
+
+Copyright © 2026 Carlos Freitas. All rights reserved.
+
+This project was developed as part of the HELINK project.
+The source code is publicly available for viewing and portfolio purposes only.
+
+No permission is granted to copy, modify, distribute, sublicense,
+or use this software, in whole or in part, without prior written
+permission from the author.

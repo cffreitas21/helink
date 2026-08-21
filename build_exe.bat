@@ -9,6 +9,8 @@ set "VENV_DIR=%CD%\.venv"
 set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
 set "ENTRY_POINT=%CD%\main.py"
 set "ASSETS_DIR=%CD%\helink\assets"
+set "MAP_ASSETS_DIR=%ASSETS_DIR%\map"
+set "IMAGE_ASSETS_DIR=%ASSETS_DIR%\images"
 set "BUILD_DIR=%CD%\build"
 set "DIST_DIR=%CD%\dist"
 
@@ -18,9 +20,9 @@ if not exist "%ENTRY_POINT%" (
     goto :fail
 )
 
-if not exist "%ASSETS_DIR%\portugal_z12.pmtiles" (
+if not exist "%MAP_ASSETS_DIR%\portugal_z12.pmtiles" (
     echo [ERROR] The offline map was not found in:
-    echo         %ASSETS_DIR%
+    echo         %MAP_ASSETS_DIR%
     goto :fail
 )
 
@@ -56,7 +58,7 @@ echo [3/4] Building the Windows application...
     --onefile ^
     --windowed ^
     --name "%APP_NAME%" ^
-    --icon "%ASSETS_DIR%\helink_icon.ico" ^
+    --icon "%IMAGE_ASSETS_DIR%\helink_icon.ico" ^
     --distpath "%DIST_DIR%" ^
     --workpath "%BUILD_DIR%\pyinstaller" ^
     --specpath "%BUILD_DIR%" ^

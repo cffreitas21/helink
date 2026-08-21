@@ -17,6 +17,7 @@ def run():
     icon_path = (
         Path(__file__).resolve().parent
         / 'assets'
+        / 'images'
         / 'helink_icon.ico'
     )
     app.setWindowIcon(QIcon(str(icon_path)))

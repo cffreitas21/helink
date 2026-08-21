@@ -36,7 +36,7 @@ class MapTab(QWidget):
 class OfflineRouteMap(QWebEngineView):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.assets = Path(__file__).resolve().parents[2] / "assets"
+        self.assets = Path(__file__).resolve().parents[2] / "assets" / "map"
         self.server = get_map_server(self.assets)
         self.setPage(OfflineMapPage(self))
         self.setContextMenuPolicy(Qt.NoContextMenu)
