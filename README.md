@@ -2,11 +2,9 @@
 
 HELINK is an offline desktop application for helicopter flight analysis and preventive maintenance. It imports Garmin G1000H CSV/ZIP files, stores flight information locally, and presents telemetry, alerts, exceedances, route data, and maintenance reports.
 
-This project was developed for private academic use.
-
 ## Author
 
-Carlos Fernando Garcia Freitas - 25959@stu.ipbeja.pt
+Carlos Fernando Garcia Freitas - carlosfreitas-21@hotmail.com
 
 ## Main features
 
