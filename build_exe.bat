@@ -56,6 +56,7 @@ echo [3/4] Building the Windows application...
     --onefile ^
     --windowed ^
     --name "%APP_NAME%" ^
+    --icon "%ASSETS_DIR%\helink_icon.ico" ^
     --distpath "%DIST_DIR%" ^
     --workpath "%BUILD_DIR%\pyinstaller" ^
     --specpath "%BUILD_DIR%" ^

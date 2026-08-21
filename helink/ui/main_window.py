@@ -7,6 +7,7 @@ from PySide6.QtWidgets import *
 
 from helink.ui.dialogs import AboutDialog, AddAircraftDialog
 from helink.ui.pages import AircraftPage, DashboardPage, FlightPage
+from helink.ui.widgets import Sidebar
 
 
 class MainWindow(QMainWindow):
@@ -28,7 +29,7 @@ class MainWindow(QMainWindow):
         self.navigation_controller = navigation_controller
         self.navigation_controller.attach_view(self)
 
-        self.setWindowTitle('HELINK ? Aircraft Analysis and Maintenance')
+        self.setWindowTitle('HELINK - Helicopter Flight Analysis & Maintenance')
         self.resize(1450, 900)
         self.setup_menu_bar()
 
@@ -38,37 +39,12 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        sidebar = QFrame()
-        sidebar.setObjectName('sidebar')
-        sidebar.setFixedWidth(235)
-        sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(16, 22, 16, 18)
-        brand = QLabel('\u2708  HELINK')
-        brand.setObjectName('brand')
-        sidebar_layout.addWidget(brand)
-        tagline = QLabel('Helicopter Flight Analysis & Maintenance')
-        tagline.setWordWrap(True)
-        tagline.setStyleSheet('color:#94a3b8')
-        sidebar_layout.addWidget(tagline)
-        sidebar_layout.addSpacing(25)
-
-        self.nav_dashboard = QPushButton('Fleet Overview')
-        self.nav_dashboard.setObjectName('nav')
-        self.nav_dashboard.clicked.connect(
+        self.sidebar = Sidebar()
+        self.sidebar.dashboard_requested.connect(
             self.navigation_controller.show_dashboard
         )
-        sidebar_layout.addWidget(self.nav_dashboard)
-        self.nav_import = QPushButton('Import Files')
-        self.nav_import.setObjectName('nav')
-        self.nav_import.clicked.connect(self.import_global)
-        sidebar_layout.addWidget(self.nav_import)
-        sidebar_layout.addStretch()
-        footer = QLabel('\nHELINK - 2026')
-        footer.setStyleSheet(
-            'color:#aebdd0;font-size:11px;background:transparent'
-        )
-        sidebar_layout.addWidget(footer)
-        root.addWidget(sidebar)
+        self.sidebar.import_requested.connect(self.import_global)
+        root.addWidget(self.sidebar)
 
         body = QWidget()
         body_layout = QVBoxLayout(body)
