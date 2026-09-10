@@ -19,7 +19,9 @@ from helink.ui.main_window import MainWindow
 
 def build_main_window(database_path: Path | None = None) -> MainWindow:
     """Create the object graph and inject each dependency into the UI."""
+
     resolved_path = database_path or Path.home() / '.helink' / 'helink.db'
+
     database = DatabaseManager(resolved_path)
 
     aircraft_repository = AircraftRepository(database)

@@ -2,9 +2,12 @@ import json,uuid
 from helink.models.flight import Flight
 
 class FlightRepository:
+
     def __init__(self,database):self.database=database
     @property
+
     def connection(self):return self.database.connection
+
     def find_all(self,aircraft_id=None):
         query='SELECT * FROM flights';params=[]
         if aircraft_id:query+=' WHERE aircraft_id=?';params=[aircraft_id]
@@ -12,6 +15,7 @@ class FlightRepository:
         for row in self.connection.execute(query,params):
             record=dict(row);record['imported_files']=json.loads(record['imported_files']);result.append(Flight.from_record(record))
         return result
+
     def find_by_id(self,flight_id):
         row=self.connection.execute('SELECT * FROM flights WHERE id=?',(flight_id,)).fetchone()
         if not row:return None
@@ -28,6 +32,7 @@ class FlightRepository:
         ):
             alert=dict(row);alert['triggers']=json.loads(alert.get('triggers_json') or '[]');record['alerts'].append(alert)
         return Flight.from_record(record)
+
     def save(self,flight):
         existing=self.connection.execute('SELECT id FROM flights WHERE aircraft_id=? AND flight_date=?',(flight['aircraft_id'],flight['flight_date'])).fetchone()
         flight_id=existing['id'] if existing else flight.get('id') or str(uuid.uuid4())
@@ -54,14 +59,20 @@ class FlightRepository:
                     self.connection.execute('INSERT INTO alerts(flight_id,kind,timestamp,alert_state,alert_name,level,description,trigger_name,trigger_value,trigger_units,trigger_state,triggers_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(flight_id,'EXCEEDANCE' if collection=='exceedances' else 'CAS',alert.get('timestamp'),alert.get('alertState'),alert.get('alertName'),level,alert.get('description'),alert.get('triggerName'),str(alert.get('triggerValue','')),alert.get('triggerUnits'),alert.get('triggerState'),json.dumps(alert.get('triggers',[]))))
         return flight_id
     @staticmethod
+
     def _engine_parser(x):return {'timestamp':x.timestamp,'OAT':x.oat,'N1':x.n1,'N2':x.n2,'ITT':x.itt,'NR':x.nr,'TQ':x.tq,'ENG_OT':x.eng_ot,'FUEL_PRESS':x.fuel_press,'ENG_OP':x.eng_op,'XMSN_OP':x.xmsn_op,'XMSN_OT':x.xmsn_ot}
     @staticmethod
+
     def _gps_parser(x):return {'timestamp':x.timestamp,'latitude':x.latitude,'longitude':x.longitude,'altInd':x.alt_ind,'ias':x.ias,'pitch':x.pitch,'roll':x.roll,'heading':x.heading}
     @staticmethod
+
     def _alert_parser(a):return {'timestamp':a.timestamp,'alertState':a.alert_state,'alertName':a.alert_name,'level':a.level,'description':a.description,'triggerName':a.trigger_name,'triggerValue':a.trigger_value,'triggerUnits':a.trigger_units,'triggerState':a.trigger_state,'triggers':[{'name':t.name,'value':t.value,'units':t.units,'state':t.state} for t in a.triggers]}
+
     def delete(self,flight_id):
         with self.connection:self.connection.execute('DELETE FROM flights WHERE id=?',(flight_id,))
+
     def delete_many(self,flight_ids):
         with self.connection:self.connection.executemany('DELETE FROM flights WHERE id=?',[(x,) for x in flight_ids])
+
     def save_report(self,flight_id,text):
         with self.connection:self.connection.execute('UPDATE flights SET predictive_report=? WHERE id=?',(text,flight_id))

@@ -13,11 +13,14 @@ CREATE TABLE IF NOT EXISTS alerts(id INTEGER PRIMARY KEY AUTOINCREMENT,flight_id
 """
 
 class DatabaseManager:
+
     REQUIRED_TABLES={'aircraft','flights','engine_data','gps_data','alerts'}
+
     def __init__(self,path):
         self.path=Path(path); self.path.parent.mkdir(parents=True,exist_ok=True)
         self.connection=sqlite3.connect(self.path); self.connection.row_factory=sqlite3.Row
         self.connection.execute('PRAGMA foreign_keys=ON'); self._migrate(); self.connection.executescript(SCHEMA)
+
     def _migrate(self):
         mappings={'aircraft':{'prefixo':'registration','modelo':'model','msn':'serial_number','horas_voo':'flight_hours'},'flights':{'aeronave_id':'aircraft_id','data_voo':'flight_date','hora_partida':'departure_time','duracao':'duration','origem':'origin','destino':'destination','ficheiros_importados':'imported_files'}}
         tables={row[0] for row in self.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -39,12 +42,14 @@ class DatabaseManager:
                         "ALTER TABLE alerts ADD COLUMN triggers_json TEXT NOT NULL DEFAULT '[]'"
                     )
     @classmethod
+
     def validate(cls,path):
         resolved=Path(path).resolve(); connection=sqlite3.connect(f'file:{resolved.as_posix()}?mode=ro',uri=True)
         try: integrity=connection.execute('PRAGMA integrity_check').fetchone()[0];tables={row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         finally:connection.close()
         if integrity!='ok':raise ValueError('The selected SQLite database failed its integrity check.')
         if not cls.REQUIRED_TABLES.issubset(tables):raise ValueError('The selected file is not a valid HELINK database.')
+
     def export_to(self,destination):
         destination=Path(destination)
         if destination.resolve()==self.path.resolve():raise ValueError('Select a different destination file.')
@@ -52,6 +57,7 @@ class DatabaseManager:
         try:self.connection.backup(target);target.commit()
         finally:target.close()
         self.validate(destination);return destination
+
     def import_from(self,source):
         source=Path(source)
         if source.resolve()==self.path.resolve():raise ValueError('This database is already open.')
@@ -71,4 +77,5 @@ class DatabaseManager:
                 except Exception:pass
                 shutil.copy2(backup,self.path);self.connection=sqlite3.connect(self.path);self.connection.row_factory=sqlite3.Row;self.connection.execute('PRAGMA foreign_keys=ON')
             raise
+
     def close(self):self.connection.close()

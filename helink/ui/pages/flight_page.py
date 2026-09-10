@@ -13,8 +13,8 @@ from helink.ui.tabs import AlertsTab, MapTab, OverviewTab, TelemetryTab
 
 class FlightPage(QWidget):
     back_requested=Signal(); import_requested=Signal(str,str)
-    def __init__(self, flight_controller, report_controller):
-        super().__init__(); self.flight_controller=flight_controller; self.report_controller=report_controller; self.fid=None; root=QVBoxLayout(self); root.setContentsMargins(20,16,20,20)
+    def __init__(self, aircraft_controller, flight_controller, report_controller):
+        super().__init__(); self.aircraft_controller=aircraft_controller; self.flight_controller=flight_controller; self.report_controller=report_controller; self.fid=None; root=QVBoxLayout(self); root.setContentsMargins(20,16,20,20)
         h=QHBoxLayout(); b=QPushButton('← Flight List'); b.setObjectName('secondary'); b.clicked.connect(self.back_requested); h.addWidget(b); self.title=QLabel(); self.title.setObjectName('title'); h.addWidget(self.title); h.addStretch(); ex=QPushButton('Export Report'); ex.clicked.connect(self.export_report); h.addWidget(ex); root.addLayout(h)
         self.tabs=QTabWidget(); root.addWidget(self.tabs)
         self.overview=OverviewTab(); self.overview.import_requested.connect(lambda t:self.import_requested.emit(self.fid,t)); self.overview.event_requested.connect(self.open_event_summary); self.tabs.addTab(self.overview,'Overview')
@@ -24,7 +24,10 @@ class FlightPage(QWidget):
         self.route=MapTab(); self.tabs.addTab(self.route,'Flight Route')
         rep=QWidget(); rl=QVBoxLayout(rep); self.report=QTextEdit(); self.report.setReadOnly(True); gen=QPushButton('Generate Maintenance Report'); gen.clicked.connect(self.make_report); rl.addWidget(gen); rl.addWidget(self.report); self.tabs.addTab(rep,'Maintenance Report')
     def load(self,fid):
-        self.fid=fid; f=self.flight_controller.get(fid); self.title.setText(f"Flight Record: {f.flight_date} · {f.departure_time} · {f.origin}")
+        self.fid=fid; f=self.flight_controller.get(fid)
+        aircraft=next((item for item in self.aircraft_controller.list_aircraft() if item.id==f.aircraft_id),None)
+        registration=aircraft.registration if aircraft else f.aircraft_id
+        self.title.setText(f"{registration}  ·  Flight Record: {f.flight_date} · {f.departure_time} · {f.origin}")
         self.overview.load(f); self.telemetry.load(f); self.exceed.load(f); self.cas.load(f); self.route.load(f); text=f.predictive_report or 'No maintenance report has been generated for this flight yet.'; self.report.setPlainText(text)
     def open_event_summary(self, event_key):
         if event_key == 'exceedances':

@@ -2,8 +2,10 @@ import uuid
 from helink.models.aircraft import Aircraft
 
 class AircraftRepository:
+
     def __init__(self,database):self.database=database
     @property
+
     def connection(self):return self.database.connection
 
     def find_all(self):

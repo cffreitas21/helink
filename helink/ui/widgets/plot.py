@@ -10,7 +10,9 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 
 class Plot(Canvas):
+
     point_selected=Signal(int)
+
     def __init__(self, height=3):
         self.fig = Figure(figsize=(7, height), tight_layout=True)
         self.ax = self.fig.add_subplot(111)
@@ -22,6 +24,7 @@ class Plot(Canvas):
 
     def _invalidate_cursor(self, _event=None):
         self._cursor_background = None
+
     def _pick_point(self,event):
         index=getattr(event.artist,'_data_index',None)
         if index is not None:self.point_selected.emit(index)

@@ -13,9 +13,9 @@ from helink.ui.widgets import Sidebar
 class MainWindow(QMainWindow):
     def __init__(
         self,
-        aircraft_controller,
         flight_controller,
         import_controller,
+        aircraft_controller,
         report_controller,
         database_controller,
         navigation_controller,
@@ -49,7 +49,9 @@ class MainWindow(QMainWindow):
         body = QWidget()
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
+
         self.stack = QStackedWidget()
+
         body_layout.addWidget(self.stack)
         root.addWidget(body, 1)
 
@@ -58,7 +60,9 @@ class MainWindow(QMainWindow):
             self.aircraft_controller, self.flight_controller
         )
         self.flight = FlightPage(
-            self.flight_controller, self.report_controller
+            self.aircraft_controller,
+            self.flight_controller,
+            self.report_controller,
         )
         for page in (self.dashboard, self.aircraft, self.flight):
             self.stack.addWidget(page)

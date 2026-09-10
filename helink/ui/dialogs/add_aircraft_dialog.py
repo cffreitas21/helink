@@ -10,7 +10,7 @@ class AddAircraftDialog(QDialog):
         self.setMinimumWidth(440)
         form = QFormLayout(self)
         self.prefix = QLineEdit()
-        self.model = QLineEdit('AgustaWestland AW119 Koala')
+        self.model = QLineEdit('Leonardo AW119 Koala')
         self.serial_number = QLineEdit()
         form.addRow('Tail Number', self.prefix)
         form.addRow('Aircraft Model', self.model)
