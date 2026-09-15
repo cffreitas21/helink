@@ -7,12 +7,15 @@ from PySide6.QtWidgets import (
     QPushButton, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
+from helink.services.airport_formatter import format_airport
 from helink.ui.dialogs import PdfPreviewDialog
 from helink.ui.tabs import AlertsTab, MapTab, OverviewTab, TelemetryTab
 
 
 class FlightPage(QWidget):
+
     back_requested=Signal(); import_requested=Signal(str,str)
+
     def __init__(self, aircraft_controller, flight_controller, report_controller):
         super().__init__(); self.aircraft_controller=aircraft_controller; self.flight_controller=flight_controller; self.report_controller=report_controller; self.fid=None; root=QVBoxLayout(self); root.setContentsMargins(20,16,20,20)
         h=QHBoxLayout(); b=QPushButton('← Flight List'); b.setObjectName('secondary'); b.clicked.connect(self.back_requested); h.addWidget(b); self.title=QLabel(); self.title.setObjectName('title'); h.addWidget(self.title); h.addStretch(); ex=QPushButton('Export Report'); ex.clicked.connect(self.export_report); h.addWidget(ex); root.addLayout(h)
@@ -23,12 +26,19 @@ class FlightPage(QWidget):
         self.exceed=AlertsTab('EXCEEDANCE'); self.tabs.addTab(self.exceed,'Exceedances')
         self.route=MapTab(); self.tabs.addTab(self.route,'Flight Route')
         rep=QWidget(); rl=QVBoxLayout(rep); self.report=QTextEdit(); self.report.setReadOnly(True); gen=QPushButton('Generate Maintenance Report'); gen.clicked.connect(self.make_report); rl.addWidget(gen); rl.addWidget(self.report); self.tabs.addTab(rep,'Maintenance Report')
+
     def load(self,fid):
         self.fid=fid; f=self.flight_controller.get(fid)
         aircraft=next((item for item in self.aircraft_controller.list_aircraft() if item.id==f.aircraft_id),None)
         registration=aircraft.registration if aircraft else f.aircraft_id
-        self.title.setText(f"{registration}  ·  Flight Record: {f.flight_date} · {f.departure_time} · {f.origin}")
+        self.title.setText(
+            f"{registration}  \N{MIDDLE DOT}  Flight Record: "
+            f"{f.flight_date} \N{MIDDLE DOT} {f.departure_time}"
+            f"\N{EN DASH}{f.arrival_time or '\N{EM DASH}'} "
+            f"\N{MIDDLE DOT} {format_airport(f.origin)}"
+        )
         self.overview.load(f); self.telemetry.load(f); self.exceed.load(f); self.cas.load(f); self.route.load(f); text=f.predictive_report or 'No maintenance report has been generated for this flight yet.'; self.report.setPlainText(text)
+
     def open_event_summary(self, event_key):
         if event_key == 'exceedances':
             self.exceed.set_filters()
@@ -73,6 +83,7 @@ class FlightPage(QWidget):
                 temporary_path.unlink(missing_ok=True)
             except OSError:
                 pass
+
     def export_report(self):
         flight = self.flight_controller.get(self.fid)
         suggested = f'HELINK_Maintenance_Report_{flight.flight_date}.pdf'

@@ -14,6 +14,7 @@ class Flight:
     aircraft_id: str
     flight_date: str
     departure_time: str = ''
+    arrival_time: str = ''
     duration: str = ''
     origin: str = ''
     destination: str = ''
@@ -31,6 +32,7 @@ class Flight:
             aircraft_id=str(record['aircraft_id']),
             flight_date=str(record['flight_date']),
             departure_time=str(record.get('departure_time') or ''),
+            arrival_time=str(record.get('arrival_time') or ''),
             duration=str(record.get('duration') or ''),
             origin=str(record.get('origin') or ''),
             destination=str(record.get('destination') or ''),

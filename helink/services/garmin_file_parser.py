@@ -115,6 +115,35 @@ def _stamp(name:str):
     if m:return f'20{m[1]}-{m[2]}-{m[3]}',f'{m[4]}:{m[5]}:{m[6]}',m[7]
     return datetime.now().strftime('%Y-%m-%d'),datetime.now().strftime('%H:%M:%S'),'-'
 
+def _clock_time(value):
+    matches = re.findall(
+        r'(?<!\d)([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?',
+        str(value or ''),
+    )
+    if not matches:
+        return ''
+    hour, minute, second = matches[-1]
+    return f'{int(hour):02d}:{minute}:{second or "00"}'
+
+
+def _duration_between(departure_time, arrival_time):
+    departure = _clock_time(departure_time)
+    arrival = _clock_time(arrival_time)
+    if not departure or not arrival:
+        return ''
+    def seconds(value):
+        hour, minute, second = map(int, value.split(':'))
+        return hour * 3600 + minute * 60 + second
+    difference = seconds(arrival) - seconds(departure)
+    if difference < 0:
+        difference += 86400
+    minutes = max(1, round(difference / 60))
+    if minutes < 60:
+        return f'{minutes} min'
+    hours, remaining = divmod(minutes, 60)
+    return f'{hours}h {remaining}m' if remaining else f'{hours}h'
+
+
 def _duration(rows:list[dict]):
     if len(rows)<2:return None
     def ts(r):return _get(r,'Timestamp','Lcl Time','LclTime','Time')
@@ -202,7 +231,7 @@ def parse_files(paths:list[str], aircraft_id:str, forced_type:str|None=None):
     groups={}
     for name,data in blobs:
         date,time,loc=_stamp(name); key=date # React merges the Garmin files of the same day
-        g=groups.setdefault(key,{'id':str(uuid.uuid4()),'aircraft_id':aircraft_id,'flight_date':date,'departure_time':time,'duration':'Unable to calculate','origin':loc,'destination':'','imported_files':[],'engine_data':[],'data_log':[],'exceedances':[],'cas_messages':[],'auxiliary_data':{}})
+        g=groups.setdefault(key,{'id':str(uuid.uuid4()),'aircraft_id':aircraft_id,'flight_date':date,'departure_time':time,'arrival_time':'','duration':'Unable to calculate','origin':loc,'destination':'','imported_files':[],'engine_data':[],'data_log':[],'exceedances':[],'cas_messages':[],'auxiliary_data':{}})
         label,kind=_detect(name,forced_type)
         if label not in g['imported_files']:g['imported_files'].append(label)
         rows,headers=_read(data)
@@ -247,4 +276,18 @@ def parse_files(paths:list[str], aircraft_id:str, forced_type:str|None=None):
                     g['cas_messages'].append(a)
         else:
             g['auxiliary_data'][label]=rows
+    for flight in groups.values():
+        for collection in ('engine_data', 'data_log'):
+            for item in reversed(flight[collection]):
+                if arrival_time := _clock_time(item.get('timestamp')):
+                    flight['arrival_time'] = arrival_time
+                    break
+            if flight['arrival_time']:
+                break
+        if str(flight.get('duration') or '').strip().lower() in (
+            '', 'unable to calculate'
+        ):
+            flight['duration'] = _duration_between(
+                flight.get('departure_time'), flight.get('arrival_time')
+            ) or flight['duration']
     return list(groups.values())

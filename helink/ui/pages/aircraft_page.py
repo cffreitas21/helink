@@ -5,6 +5,8 @@ from PySide6.QtWidgets import (
     QToolButton, QVBoxLayout, QWidget,
 )
 
+from helink.services.airport_formatter import format_airport
+
 
 class AircraftPage(QWidget):
     flight_selected = Signal(str)
@@ -49,22 +51,23 @@ class AircraftPage(QWidget):
         toolbar.addWidget(self.delete_btn)
         root.addLayout(toolbar)
 
-        self.table = QTableWidget(0, 7)
+        self.table = QTableWidget(0, 8)
         self.table.setObjectName('flightTable')
         self.table.setHorizontalHeaderLabels([
-            '', 'FLIGHT DATE', 'DEPARTURE', 'DURATION',
+            '', 'FLIGHT DATE', 'DEPARTURE', 'ARRIVAL', 'DURATION',
             'ORIGIN', 'IMPORTED FILES', 'ACTIONS',
         ])
         header = self.table.horizontalHeader()
-        for column in range(6):
+        for column in range(7):
             header.setSectionResizeMode(column, QHeaderView.Fixed)
-        header.setSectionResizeMode(6, QHeaderView.Stretch)
+        header.setSectionResizeMode(7, QHeaderView.Stretch)
         self.table.setColumnWidth(0, 46)
-        self.table.setColumnWidth(1, 155)
-        self.table.setColumnWidth(2, 125)
-        self.table.setColumnWidth(3, 175)
-        self.table.setColumnWidth(4, 95)
-        self.table.setColumnWidth(5, 155)
+        self.table.setColumnWidth(1, 145)
+        self.table.setColumnWidth(2, 110)
+        self.table.setColumnWidth(3, 110)
+        self.table.setColumnWidth(4, 150)
+        self.table.setColumnWidth(5, 230)
+        self.table.setColumnWidth(6, 145)
         header.setMinimumSectionSize(42)
         header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -111,8 +114,9 @@ class AircraftPage(QWidget):
             values = (
                 flight.flight_date,
                 flight.departure_time,
+                flight.arrival_time or '\N{EM DASH}',
                 flight.duration,
-                flight.origin,
+                format_airport(flight.origin),
             )
             for column, value in enumerate(values, 1):
                 item = QTableWidgetItem(str(value))
@@ -125,7 +129,7 @@ class AircraftPage(QWidget):
                 self.table.setItem(row, column, item)
 
             self.table.setCellWidget(
-                row, 5, self._files_button(flight.imported_files)
+                row, 6, self._files_button(flight.imported_files)
             )
 
             actions = QWidget()
@@ -149,7 +153,7 @@ class AircraftPage(QWidget):
             action_layout.addWidget(open_button)
             action_layout.addWidget(delete_button)
             action_layout.addStretch()
-            self.table.setCellWidget(row, 6, actions)
+            self.table.setCellWidget(row, 7, actions)
 
     def _files_button(self, files):
         names = list(files or [])

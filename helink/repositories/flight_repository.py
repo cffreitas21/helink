@@ -1,4 +1,4 @@
-import json,uuid
+import json,re,uuid
 from helink.models.flight import Flight
 
 class FlightRepository:
@@ -44,8 +44,18 @@ class FlightRepository:
             if not flight.get('exceedances'):flight['exceedances']=[self._alert_parser(a) for a in old_ex]
             if not flight.get('cas_messages'):flight['cas_messages']=[self._alert_parser(a) for a in old_cas]
             flight['imported_files']=sorted(set(old.imported_files+tuple(flight.get('imported_files',[]))))
+        flight['arrival_time'] = (
+            self._derive_arrival_time(flight)
+            or flight.get('arrival_time', '')
+        )
+        if str(flight.get('duration') or '').strip().lower() in (
+            '', 'unable to calculate'
+        ):
+            flight['duration'] = self._duration_between(
+                flight.get('departure_time'), flight.get('arrival_time')
+            ) or flight.get('duration', '')
         with self.connection:
-            self.connection.execute("""INSERT OR REPLACE INTO flights(id,aircraft_id,flight_date,departure_time,duration,origin,destination,imported_files,predictive_report) VALUES(?,?,?,?,?,?,?,?,COALESCE((SELECT predictive_report FROM flights WHERE id=?),''))""",(flight_id,flight['aircraft_id'],flight['flight_date'],flight.get('departure_time',''),flight.get('duration',''),flight.get('origin',''),flight.get('destination',''),json.dumps(flight.get('imported_files',[])),flight_id))
+            self.connection.execute("""INSERT OR REPLACE INTO flights(id,aircraft_id,flight_date,departure_time,arrival_time,duration,origin,destination,imported_files,predictive_report) VALUES(?,?,?,?,?,?,?,?,?,COALESCE((SELECT predictive_report FROM flights WHERE id=?),''))""",(flight_id,flight['aircraft_id'],flight['flight_date'],flight.get('departure_time',''),flight.get('arrival_time',''),flight.get('duration',''),flight.get('origin',''),flight.get('destination',''),json.dumps(flight.get('imported_files',[])),flight_id))
             for table in ('engine_data','gps_data','alerts'):self.connection.execute(f'DELETE FROM {table} WHERE flight_id=?',(flight_id,))
             for seq,item in enumerate(flight.get('engine_data',[])):
                 self.connection.execute('INSERT INTO engine_data(flight_id,seq,timestamp,oat,n1,n2,itt,nr,tq,eng_ot,fuel_press,eng_op,xmsn_op,xmsn_ot) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(flight_id,seq,item.get('timestamp'),item.get('OAT'),item.get('N1'),item.get('N2'),item.get('ITT'),item.get('NR'),item.get('TQ'),item.get('ENG_OT'),item.get('FUEL_PRESS'),item.get('ENG_OP'),item.get('XMSN_OP'),item.get('XMSN_OT')))
@@ -58,6 +68,47 @@ class FlightRepository:
                         continue
                     self.connection.execute('INSERT INTO alerts(flight_id,kind,timestamp,alert_state,alert_name,level,description,trigger_name,trigger_value,trigger_units,trigger_state,triggers_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(flight_id,'EXCEEDANCE' if collection=='exceedances' else 'CAS',alert.get('timestamp'),alert.get('alertState'),alert.get('alertName'),level,alert.get('description'),alert.get('triggerName'),str(alert.get('triggerValue','')),alert.get('triggerUnits'),alert.get('triggerState'),json.dumps(alert.get('triggers',[]))))
         return flight_id
+    @staticmethod
+    def _clock_time(value):
+        matches = re.findall(
+            r'(?<!\d)([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?',
+            str(value or ''),
+        )
+        if not matches:
+            return ''
+        hour, minute, second = matches[-1]
+        return f'{int(hour):02d}:{minute}:{second or "00"}'
+
+    @classmethod
+    def _duration_between(cls, departure_time, arrival_time):
+        departure = cls._clock_time(departure_time)
+        arrival = cls._clock_time(arrival_time)
+        if not departure or not arrival:
+            return ''
+        def seconds(value):
+            hour, minute, second = map(int, value.split(':'))
+            return hour * 3600 + minute * 60 + second
+        difference = seconds(arrival) - seconds(departure)
+        if difference < 0:
+            difference += 86400
+        minutes = max(1, round(difference / 60))
+        if minutes < 60:
+            return f'{minutes} min'
+        hours, remaining = divmod(minutes, 60)
+        return f'{hours}h {remaining}m' if remaining else f'{hours}h'
+
+    @classmethod
+    def _derive_arrival_time(cls, flight):
+        for collection in ('engine_data', 'data_log'):
+            for item in reversed(flight.get(collection, [])):
+                timestamp = (
+                    item.get('timestamp') if isinstance(item, dict)
+                    else getattr(item, 'timestamp', None)
+                )
+                if arrival_time := cls._clock_time(timestamp):
+                    return arrival_time
+        return ''
+
     @staticmethod
 
     def _engine_parser(x):return {'timestamp':x.timestamp,'OAT':x.oat,'N1':x.n1,'N2':x.n2,'ITT':x.itt,'NR':x.nr,'TQ':x.tq,'ENG_OT':x.eng_ot,'FUEL_PRESS':x.fuel_press,'ENG_OP':x.eng_op,'XMSN_OP':x.xmsn_op,'XMSN_OT':x.xmsn_ot}

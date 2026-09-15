@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 from statistics import mean
 
+from helink.services.airport_formatter import format_airport
 from helink.models.flight import AlertTrigger, Flight
 
 
@@ -94,9 +95,10 @@ def technical_report(flight: Flight) -> str:
         '-' * 72,
         f'Flight date:       {flight.flight_date or "N/A"}',
         f'Departure:         {flight.departure_time or "N/A"}',
+        f'Arrival:           {flight.arrival_time or "N/A"}',
         f'Duration:          {flight.duration or "N/A"}',
-        f'Origin:            {flight.origin or "N/A"}',
-        f'Destination:       {flight.destination or "N/A"}',
+        f'Origin:            {format_airport(flight.origin) if flight.origin else "N/A"}',
+        f'Destination:       {format_airport(flight.destination) if flight.destination else "N/A"}',
         '',
         'KEY FLIGHT PARAMETERS',
         '-' * 72,
@@ -279,8 +281,9 @@ pre {{
 <table class="meta"><tr>
   <td><div class="meta-label">Flight Date</div><div class="meta-value">{escape(flight.flight_date or "N/A")}</div></td>
   <td><div class="meta-label">Departure</div><div class="meta-value">{escape(flight.departure_time or "N/A")}</div></td>
+  <td><div class="meta-label">Arrival</div><div class="meta-value">{escape(flight.arrival_time or "N/A")}</div></td>
   <td><div class="meta-label">Duration</div><div class="meta-value">{escape(flight.duration or "N/A")}</div></td>
-  <td><div class="meta-label">Origin</div><div class="meta-value">{escape(flight.origin or "N/A")}</div></td>
+  <td><div class="meta-label">Origin</div><div class="meta-value">{escape(format_airport(flight.origin) if flight.origin else "N/A")}</div></td>
 </tr></table>
 <div class="report"><pre>{report}</pre></div>
 <div class="note"><b>Important:</b> This report supports technical assessment and does not replace approved or certified maintenance documentation.</div>

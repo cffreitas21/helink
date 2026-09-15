@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from helink.services.airport_formatter import format_airport
 from helink.ui.widgets import Card
 
 
@@ -45,6 +46,7 @@ class OverviewTab(QWidget):
         summary_fields = (
             ('date', 'Flight Date'),
             ('departure', 'Departure'),
+            ('arrival', 'Arrival'),
             ('duration', 'Duration'),
             ('origin', 'Origin'),
         )
@@ -203,8 +205,11 @@ class OverviewTab(QWidget):
         self.summary_values['departure'].setText(
             flight.departure_time or '\u2014'
         )
+        self.summary_values['arrival'].setText(
+            flight.arrival_time or '\u2014'
+        )
         self.summary_values['duration'].setText(flight.duration or '\u2014')
-        self.summary_values['origin'].setText(flight.origin or '\u2014')
+        self.summary_values['origin'].setText(format_airport(flight.origin))
 
         itt = self._values(engine, 'itt')
         torque = self._values(engine, 'tq')
