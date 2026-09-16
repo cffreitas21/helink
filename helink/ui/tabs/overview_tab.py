@@ -1,26 +1,21 @@
 from statistics import mean
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QScrollArea, QSizePolicy, QToolButton,
+    QFrame, QGridLayout, QHBoxLayout, QLabel,
+    QScrollArea, QSizePolicy, QToolButton,
     QVBoxLayout, QWidget,
 )
 
 from helink.services.airport_formatter import format_airport
-from helink.ui.widgets import Card
+from helink.ui.widgets import Card, ImportedFilesList
+from helink.ui.widgets.imported_files_button import EXPECTED_FILE_TYPES
 
 
 class OverviewTab(QWidget):
     import_requested = Signal(str)
     event_requested = Signal(str)
 
-    FILE_TYPES = [
-        '1_Engine_Data_Recording', 'data_log', '2_Exceedance_Log',
-        '3_Exceedance_Log_CONT', '4_VNE_Dynamic', '0_CAS_Default',
-        '5_CAS', '6_Logbook', 'Garmin Alerts',
-    ]
 
     def __init__(self):
         super().__init__()
@@ -172,12 +167,11 @@ class OverviewTab(QWidget):
 
         files_panel = Card('Imported Files')
         files_panel.setObjectName('filesPanel')
-        files_panel.setFixedWidth(310)
+        files_panel.setFixedWidth(370)
         self.file_count = QLabel()
-        self.file_count.setObjectName('muted')
+        self.file_count.setObjectName('importedFilesCount')
         files_panel.layout.addWidget(self.file_count)
-        self.files = QListWidget()
-        self.files.setObjectName('overviewFiles')
+        self.files = ImportedFilesList()
         files_panel.layout.addWidget(self.files, 1)
         root.addWidget(files_panel)
 
@@ -289,20 +283,10 @@ class OverviewTab(QWidget):
             self.route_summary.setText('No valid GPS route is available.')
 
         imported = set(flight.imported_files)
-        count = len(imported)
         self.file_count.setText(
-            f'{count} of {len(self.FILE_TYPES)} file types imported'
+            f'{len(imported)} / {len(EXPECTED_FILE_TYPES)}'
         )
-        self.files.clear()
-        for name in self.FILE_TYPES:
-            loaded = name in imported
-            item = QListWidgetItem(
-                f'\u2713  {name}' if loaded else f'\u2014  {name}'
-            )
-            item.setData(Qt.UserRole, loaded)
-            item.setForeground(QColor('#15803d' if loaded else '#64748b'))
-            item.setToolTip(
-                'Imported for this flight' if loaded
-                else 'Not imported for this flight'
-            )
-            self.files.addItem(item)
+        self.file_count.setToolTip(
+            f'{len(imported)} of {len(EXPECTED_FILE_TYPES)} file types imported'
+        )
+        self.files.set_files(imported)

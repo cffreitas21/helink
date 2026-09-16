@@ -1,11 +1,12 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QHBoxLayout, QHeaderView, QLabel,
-    QMenu, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
-    QToolButton, QVBoxLayout, QWidget,
+    QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
+    QVBoxLayout, QWidget,
 )
 
 from helink.services.airport_formatter import format_airport
+from helink.ui.widgets import ImportedFilesButton
 
 
 class AircraftPage(QWidget):
@@ -155,32 +156,9 @@ class AircraftPage(QWidget):
             action_layout.addStretch()
             self.table.setCellWidget(row, 7, actions)
 
-    def _files_button(self, files):
-        names = list(files or [])
-        button = QToolButton()
-        button.setObjectName('fileList')
-        button.setText(
-            f'{len(names)} file' if len(names) == 1 else f'{len(names)} files'
-        )
-        button.setFixedSize(116, 36)
-        button.setCursor(Qt.PointingHandCursor)
-        button.setToolTip(
-            '<b>Imported files</b><br>'
-            + ('<br>'.join(names) if names else 'No files recorded')
-        )
-        menu = QMenu(button)
-        heading = menu.addAction('IMPORTED FILES')
-        heading.setEnabled(False)
-        menu.addSeparator()
-        if names:
-            for name in names:
-                menu.addAction(f'  {name}')
-        else:
-            empty = menu.addAction('No files recorded')
-            empty.setEnabled(False)
-        button.setMenu(menu)
-        button.setPopupMode(QToolButton.InstantPopup)
-        return button
+    @staticmethod
+    def _files_button(files):
+        return ImportedFilesButton(files)
 
     def selected_ids(self):
         selected = []

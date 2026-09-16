@@ -66,4 +66,20 @@ QWidget#stateCell{background:transparent}
 QLabel#stateSet{background:#fee2e2;color:#991b1b;border:1px solid #f29a9a;border-radius:12px;font-size:10px;font-weight:800}
 QLabel#stateCleared{background:#dcfce7;color:#166534;border:1px solid #86d6a0;border-radius:12px;font-size:10px;font-weight:800}
 QLabel#stateNeutral{background:#e2e8f0;color:#475569;border:1px solid #b8c4d1;border-radius:12px;font-size:10px;font-weight:800}
-'''
+
+QFrame#importedFilesPopover{background:#ffffff;border:1px solid #94a3b8;border-radius:10px}
+QWidget#importedFilesHeader{background:#f8fafc;border-bottom:1px solid #d7e0eb;border-top-left-radius:10px;border-top-right-radius:10px}
+QLabel#importedFilesTitle{color:#0f172a;font-size:15px;font-weight:750}
+QLabel#importedFilesSubtitle{color:#64748b;font-size:11px}
+QLabel#importedFilesCount{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd;border-radius:11px;padding:4px 9px;font-size:11px;font-weight:750}
+QScrollArea#importedFilesScroll{background:#ffffff;border:none;border-bottom-left-radius:10px;border-bottom-right-radius:10px}
+QWidget#importedFilesContent{background:#ffffff}
+QFrame#importedFileLoaded,QFrame#importedFileMissing{border-radius:7px}
+QFrame#importedFileLoaded{background:#f0fdf4;border:1px solid #bbf7d0}
+QFrame#importedFileMissing{background:#f8fafc;border:1px solid #e2e8f0}
+QLabel#importedFileName{color:#1e293b;font-size:12px;font-weight:700}
+QLabel#importedFileType{color:#64748b;font-size:10px}
+QLabel#importedFileLoadedMarker{color:#15803d;font-size:15px;font-weight:800}
+QLabel#importedFileMissingMarker{color:#94a3b8;font-size:15px;font-weight:800}
+QLabel#importedFileLoadedStatus{background:#dcfce7;color:#166534;border:1px solid #86d6a0;border-radius:10px;padding:3px 7px;font-size:10px;font-weight:750}
+QLabel#importedFileMissingStatus{background:#e2e8f0;color:#475569;border:1px solid #cbd5e1;border-radius:10px;padding:3px 7px;font-size:10px;font-weight:750}'''
