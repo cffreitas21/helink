@@ -27,7 +27,7 @@ class FlightImportService:
         parsed = parse_files(
             paths, aircraft_id, progress=progress,
             skipped_files=skipped,
-            existing_sessions=self.flights.list_engine_sessions(aircraft_id),
+            existing_sessions=self.flights.list_import_sessions(aircraft_id),
         )
         eligible, file_count = self._only_flights_with_engine_data(
             parsed, skipped,
@@ -80,7 +80,8 @@ class FlightImportService:
         accepted_names = set()
         for flight in flights:
             source_files = flight.pop('_source_files', [])
-            if flight['engine_data'] or has_existing_engine(flight):
+            direct_csv = flight.pop('_direct_csv', False)
+            if flight['engine_data'] or direct_csv or has_existing_engine(flight):
                 eligible.append(flight)
                 accepted_names.update(source_files)
             else:

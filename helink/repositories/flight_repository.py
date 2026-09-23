@@ -61,8 +61,8 @@ class FlightRepository:
             (aircraft_id, flight_date),
         ).fetchone() is not None
 
-    def list_engine_sessions(self, aircraft_id):
-        """Return existing flight windows for matching supplementary files."""
+    def list_import_sessions(self, aircraft_id):
+        """Return existing flight windows, including standalone CSV records."""
         rows = self.connection.execute(
             """SELECT f.id, f.aircraft_id, f.flight_date, f.departure_time,
                       f.arrival_time, f.origin,
@@ -71,10 +71,17 @@ class FlightRepository:
                           AS engine_start,
                       (SELECT e.timestamp FROM engine_data e
                        WHERE e.flight_id=f.id ORDER BY e.seq DESC LIMIT 1)
-                          AS engine_end
+                          AS engine_end,
+                      (SELECT g.timestamp FROM gps_data g
+                       WHERE g.flight_id=f.id ORDER BY g.seq LIMIT 1)
+                          AS gps_start,
+                      (SELECT g.timestamp FROM gps_data g
+                       WHERE g.flight_id=f.id ORDER BY g.seq DESC LIMIT 1)
+                          AS gps_end,
+                      EXISTS(SELECT 1 FROM engine_data e WHERE e.flight_id=f.id)
+                          AS has_engine
                FROM flights f
-               WHERE f.aircraft_id=?
-                 AND EXISTS(SELECT 1 FROM engine_data e WHERE e.flight_id=f.id)""",
+               WHERE f.aircraft_id=?""",
             (aircraft_id,),
         )
         return [dict(row) for row in rows]

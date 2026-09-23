@@ -324,17 +324,21 @@ def _moment(value, flight_date):
         return None
 
 
+def _row_moment(row, flight_date):
+    value = _get(row, 'Timestamp', 'Lcl Time', 'Time')
+    row_date = _get(row, 'Lcl Date', 'Date')
+    return _moment(value, str(row_date).strip() or flight_date)
+
+
 def _file_window(rows, flight_date, fallback_time):
     times = (
-        _moment(_get(row, 'Timestamp', 'Lcl Time', 'Time'), flight_date)
+        _row_moment(row, flight_date)
         for row in rows
     )
     first = next((value for value in times if value is not None), None)
     last = next(
         (value for row in reversed(rows)
-         if (value := _moment(
-             _get(row, 'Timestamp', 'Lcl Time', 'Time'), flight_date
-         )) is not None),
+         if (value := _row_moment(row, flight_date)) is not None),
         None,
     )
     start = first or _moment(fallback_time, flight_date)
@@ -346,12 +350,16 @@ def _file_window(rows, flight_date, fallback_time):
 
 def _session_from_record(record):
     date = record['flight_date']
-    start = _moment(
-        record.get('engine_start') or record.get('departure_time'), date
-    ) or _moment('00:00:00', date)
-    end = _moment(
-        record.get('engine_end') or record.get('arrival_time'), date
-    ) or start
+    starts = [value for candidate in (
+        record.get('engine_start'), record.get('gps_start'),
+        record.get('departure_time'),
+    ) if (value := _moment(candidate, date)) is not None]
+    start = min(starts) if starts else _moment('00:00:00', date)
+    ends = [value for candidate in (
+        record.get('engine_end'), record.get('gps_end'),
+        record.get('arrival_time'),
+    ) if (value := _moment(candidate, date)) is not None]
+    end = max(ends) if ends else start
     if end < start:
         end += timedelta(days=1)
     return {
@@ -359,6 +367,7 @@ def _session_from_record(record):
         'flight_date': date, 'departure_time': record.get('departure_time') or '',
         'origin': record.get('origin') or '', 'start': start, 'end': end,
         'batch_engine': False,
+        'has_engine': bool(record.get('has_engine', record.get('engine_start'))),
     }
 
 
@@ -487,7 +496,7 @@ def _collect_csv_blobs(paths, progress: ProgressCallback | None, skipped, forced
                         if not forced_type and _detect(name)[0] is None:
                             skipped.append((name, 'File type not recognized.'))
                             continue
-                        archive_blobs.append((name, archive.read(name)))
+                        archive_blobs.append((name, archive.read(name), False))
                     blobs.extend(archive_blobs)
             except zipfile.BadZipFile:
                 skipped.append((path.name, 'The archive could not be opened.'))
@@ -495,7 +504,7 @@ def _collect_csv_blobs(paths, progress: ProgressCallback | None, skipped, forced
             if not forced_type and _detect(path.name)[0] is None:
                 skipped.append((path.name, 'File type not recognized.'))
             else:
-                blobs.append((path.name, path.read_bytes()))
+                blobs.append((path.name, path.read_bytes(), True))
         else:
             skipped.append((path.name, 'Unsupported file format.'))
     return blobs
@@ -522,7 +531,9 @@ def parse_files(
 
     prepared = []
     total_files = len(blobs)
-    for file_index, (name, data) in enumerate(blobs):
+    for file_index, blob in enumerate(blobs):
+        name, data = blob[:2]
+        direct_csv = blob[2] if len(blob) > 2 else True
         file_start = 5 + 40 * file_index / total_files
         file_span = 40 / total_files
         message = f'Reading {name} ({file_index + 1}/{total_files})'
@@ -555,10 +566,12 @@ def parse_files(
 
         date, time, origin = _stamp(name)
         start, end = _file_window(rows, date, time)
+        if start is not None:
+            date, time = start.date().isoformat(), start.strftime('%H:%M:%S')
         prepared.append({
             'name': name, 'label': label, 'kind': kind, 'rows': rows,
             'date': date, 'time': time, 'origin': origin,
-            'start': start, 'end': end,
+            'start': start, 'end': end, 'direct_csv': direct_csv,
         })
         if accepted_files is not None:
             accepted_files.append(name)
@@ -585,7 +598,11 @@ def parse_files(
                 (
                     session for session in sessions
                     if session['flight_date'] == file['date']
-                    and abs(session['start'] - start) <= timedelta(seconds=90)
+                    and (
+                        abs(session['start'] - start) <= timedelta(seconds=90)
+                        if session['has_engine']
+                        else _nearest_session(start, [session]) is not None
+                    )
                 ),
                 None,
             )
@@ -595,16 +612,21 @@ def parse_files(
                     'flight_date': file['date'],
                     'departure_time': _clock_time(start) or file['time'],
                     'origin': file['origin'], 'start': start, 'end': end,
-                    'batch_engine': True,
+                    'batch_engine': True, 'has_engine': True,
                 }
                 sessions.append(matching)
             else:
+                if not matching['has_engine']:
+                    matching['departure_time'] = _clock_time(start)
+                    matching['origin'] = file['origin'] or matching['origin']
                 if matching['batch_engine']:
                     matching['start'] = min(matching['start'], start)
                     matching['end'] = max(matching['end'], end)
                 else:
-                    matching['start'], matching['end'] = start, end
+                    matching['start'] = min(matching['start'], start)
+                    matching['end'] = max(matching['end'], end)
                 matching['batch_engine'] = True
+                matching['has_engine'] = True
             file['session'] = matching
 
     groups = {}
@@ -624,6 +646,7 @@ def parse_files(
                 'destination': '',
                 'imported_files': [],
                 '_source_files': [],
+                '_direct_csv': False,
                 'engine_data': [],
                 'data_log': [],
                 'exceedances': [],
@@ -652,19 +675,32 @@ def parse_files(
                 session for session in sessions
                 if file['start'] is not None
                 and abs((session['start'].date() - file['start'].date()).days) <= 1
+                and (file['direct_csv'] or session['has_engine'])
             ]
+            unmatched = []
             for row in rows:
-                moment = _moment(
-                    _get(row, 'Timestamp', 'Lcl Time', 'Time'), file['date']
-                ) or file['start']
+                moment = _row_moment(row, file['date']) or file['start']
                 if (moment is not None and file['start'] is not None
                         and moment < file['start'] - timedelta(hours=12)):
                     moment += timedelta(days=1)
                 session = _nearest_session(moment, candidates)
                 if session is not None:
                     by_session.setdefault(session['id'], (session, []))[1].append(row)
+                else:
+                    unmatched.append(row)
             assignments = list(by_session.values())
-            if not assignments:
+            if file['direct_csv'] and unmatched:
+                start, end = _file_window(unmatched, file['date'], file['time'])
+                standalone = {
+                    'id': str(uuid.uuid4()), 'aircraft_id': aircraft_id,
+                    'flight_date': start.date().isoformat(),
+                    'departure_time': start.strftime('%H:%M:%S'),
+                    'origin': file['origin'], 'start': start, 'end': end,
+                    'batch_engine': False, 'has_engine': False,
+                }
+                sessions.append(standalone)
+                assignments.append((standalone, unmatched))
+            elif not assignments:
                 orphan = orphan_sessions.get(file['date'])
                 if orphan is None:
                     orphan = {
@@ -680,6 +716,7 @@ def parse_files(
             group = group_for(session)
             if name not in group['_source_files']:
                 group['_source_files'].append(name)
+            group['_direct_csv'] |= file['direct_csv']
             if label not in group['imported_files']:
                 group['imported_files'].append(label)
 
@@ -727,7 +764,7 @@ def parse_files(
                     if key not in group['_exceedance_keys']:
                         group['_exceedance_keys'].add(key)
                         group['exceedances'].append(alert)
-                elif kind in ('cas', 'cas_default'):
+                elif kind in ('cas', 'cas_default', 'logbook'):
                     alert = _alert(
                         row, 'CAUTION' if kind == 'cas' else None
                     )
