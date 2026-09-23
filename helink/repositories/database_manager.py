@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os, re, shutil, sqlite3, uuid
 from datetime import datetime
+from math import isfinite
 from pathlib import Path
 
 SCHEMA="""
@@ -10,6 +11,10 @@ CREATE TABLE IF NOT EXISTS flights(id TEXT PRIMARY KEY,aircraft_id TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS engine_data(id INTEGER PRIMARY KEY AUTOINCREMENT,flight_id TEXT NOT NULL REFERENCES flights(id) ON DELETE CASCADE,seq INTEGER,timestamp TEXT,oat REAL,n1 REAL,n2 REAL,itt REAL,nr REAL,tq REAL,eng_ot REAL,fuel_press REAL,eng_op REAL,xmsn_op REAL,xmsn_ot REAL);
 CREATE TABLE IF NOT EXISTS gps_data(id INTEGER PRIMARY KEY AUTOINCREMENT,flight_id TEXT NOT NULL REFERENCES flights(id) ON DELETE CASCADE,seq INTEGER,timestamp TEXT,latitude REAL,longitude REAL,alt_ind REAL,ias REAL,pitch REAL,roll REAL,heading REAL);
 CREATE TABLE IF NOT EXISTS alerts(id INTEGER PRIMARY KEY AUTOINCREMENT,flight_id TEXT NOT NULL REFERENCES flights(id) ON DELETE CASCADE,kind TEXT NOT NULL,timestamp TEXT,alert_state TEXT,alert_name TEXT,level TEXT,description TEXT,trigger_name TEXT,trigger_value TEXT,trigger_units TEXT,trigger_state TEXT,triggers_json TEXT NOT NULL DEFAULT '[]');
+CREATE INDEX IF NOT EXISTS idx_flights_aircraft_date ON flights(aircraft_id,flight_date);
+CREATE INDEX IF NOT EXISTS idx_engine_data_flight ON engine_data(flight_id);
+CREATE INDEX IF NOT EXISTS idx_gps_data_flight ON gps_data(flight_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_flight_kind ON alerts(flight_id,kind);
 """
 
 class DatabaseManager:
@@ -18,8 +23,18 @@ class DatabaseManager:
 
     def __init__(self,path):
         self.path=Path(path); self.path.parent.mkdir(parents=True,exist_ok=True)
-        self.connection=sqlite3.connect(self.path); self.connection.row_factory=sqlite3.Row
-        self.connection.execute('PRAGMA foreign_keys=ON'); self._migrate(); self.connection.executescript(SCHEMA)
+        self.connection=sqlite3.connect(self.path)
+        self.connection.row_factory=sqlite3.Row
+        self._configure_connection()
+        self._migrate()
+        self.connection.executescript(SCHEMA)
+
+    def _configure_connection(self):
+        self.connection.execute('PRAGMA foreign_keys=ON')
+        self.connection.execute('PRAGMA journal_mode=WAL')
+        self.connection.execute('PRAGMA synchronous=NORMAL')
+        self.connection.execute('PRAGMA temp_store=MEMORY')
+        self.connection.execute('PRAGMA cache_size=-32768')
 
     def _migrate(self):
         mappings={'aircraft':{'prefixo':'registration','modelo':'model','msn':'serial_number','horas_voo':'flight_hours'},'flights':{'aeronave_id':'aircraft_id','data_voo':'flight_date','hora_partida':'departure_time','hora_chegada':'arrival_time','duracao':'duration','origem':'origin','destino':'destination','ficheiros_importados':'imported_files'}}
@@ -43,6 +58,8 @@ class DatabaseManager:
                     )
             self._backfill_arrival_times()
             self._backfill_durations()
+            if 'destination' in flight_columns and 'gps_data' in tables:
+                self._backfill_destinations()
         if 'alerts' in tables:
             alert_columns = {
                 row[1] for row in self.connection.execute(
@@ -129,6 +146,36 @@ class DatabaseManager:
                         (duration, flight['id']),
                     )
 
+    def _backfill_destinations(self):
+        from helink.services.airport_formatter import nearest_airport
+
+        flights = self.connection.execute(
+            "SELECT id FROM flights WHERE COALESCE(destination, '') = ''"
+        ).fetchall()
+        with self.connection:
+            for flight in flights:
+                rows = self.connection.execute(
+                    'SELECT latitude, longitude FROM gps_data '
+                    'WHERE flight_id=? ORDER BY seq DESC',
+                    (flight['id'],),
+                )
+                for point in rows:
+                    latitude, longitude = point['latitude'], point['longitude']
+                    if latitude is None or longitude is None:
+                        continue
+                    if (not isfinite(latitude) or not isfinite(longitude)
+                            or not -90 <= latitude <= 90
+                            or not -180 <= longitude <= 180
+                            or (latitude == 0 and longitude == 0)):
+                        continue
+                    destination = nearest_airport(latitude, longitude)
+                    if destination:
+                        self.connection.execute(
+                            'UPDATE flights SET destination=? WHERE id=?',
+                            (destination, flight['id']),
+                        )
+                    break
+
     @classmethod
 
     def validate(cls,path):
@@ -156,14 +203,14 @@ class DatabaseManager:
             try:self.connection.backup(backup_connection);backup_connection.commit()
             finally:backup_connection.close()
             self.connection.close();os.replace(temporary,self.path);replaced=True
-            self.connection=sqlite3.connect(self.path);self.connection.row_factory=sqlite3.Row;self.connection.execute('PRAGMA foreign_keys=ON')
+            self.connection=sqlite3.connect(self.path);self.connection.row_factory=sqlite3.Row;self._configure_connection()
             return backup
         except Exception:
             if temporary.exists():temporary.unlink()
             if replaced and backup.exists():
                 try:self.connection.close()
                 except Exception:pass
-                shutil.copy2(backup,self.path);self.connection=sqlite3.connect(self.path);self.connection.row_factory=sqlite3.Row;self.connection.execute('PRAGMA foreign_keys=ON')
+                shutil.copy2(backup,self.path);self.connection=sqlite3.connect(self.path);self.connection.row_factory=sqlite3.Row;self._configure_connection()
             raise
 
     def close(self):self.connection.close()

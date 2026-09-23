@@ -283,7 +283,9 @@ pre {{
   <td><div class="meta-label">Departure</div><div class="meta-value">{escape(flight.departure_time or "N/A")}</div></td>
   <td><div class="meta-label">Arrival</div><div class="meta-value">{escape(flight.arrival_time or "N/A")}</div></td>
   <td><div class="meta-label">Duration</div><div class="meta-value">{escape(flight.duration or "N/A")}</div></td>
-  <td><div class="meta-label">Origin</div><div class="meta-value">{escape(format_airport(flight.origin) if flight.origin else "N/A")}</div></td>
+</tr><tr>
+  <td colspan="2"><div class="meta-label">Origin</div><div class="meta-value">{escape(format_airport(flight.origin) if flight.origin else "N/A")}</div></td>
+  <td colspan="2"><div class="meta-label">Destination</div><div class="meta-value">{escape(format_airport(flight.destination) if flight.destination else "N/A")}</div></td>
 </tr></table>
 <div class="report"><pre>{report}</pre></div>
 <div class="note"><b>Important:</b> This report supports technical assessment and does not replace approved or certified maintenance documentation.</div>

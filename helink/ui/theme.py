@@ -21,8 +21,9 @@ QTextEdit,QListWidget{background:#ffffff;color:#111827;border:1px solid #94a3b8;
 QScrollArea{background:transparent;border:none} QScrollBar:vertical{background:#e2e8f0;width:11px;margin:2px} QScrollBar::handle:vertical{background:#64748b;border-radius:5px;min-height:32px} QScrollBar::handle:vertical:hover{background:#475569} QToolTip{background:#0f172a;color:#ffffff;border:1px solid #334155;padding:6px}
 
 QLabel#listSummary{color:#475569;font-size:12px;font-weight:600}
-QTableWidget#flightTable{background:#ffffff;alternate-background-color:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;selection-background-color:transparent;gridline-color:transparent}
-QTableWidget#flightTable::item{padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#172033}
+QTableWidget#flightTable{background:#ffffff;alternate-background-color:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;selection-background-color:#dbeafe;selection-color:#172033;gridline-color:transparent}
+QTableWidget#flightTable::item{padding:0px;border-right:1px solid #d3dce8;border-bottom:1px solid #e2e8f0;color:#172033}
+QTableWidget#flightTable::item:selected{background:#dbeafe;color:#172033}
 QTableWidget#flightTable QHeaderView::section{background:#e8eef6;color:#25344a;border:none;border-right:1px solid #d3dce8;border-bottom:1px solid #aebed2;padding:11px 10px;font-size:11px;font-weight:750}
 QWidget#tableActions{background:transparent}
 QPushButton#tableAction{background:#0b1220;color:#ffffff;border:1px solid #0b1220;border-radius:7px;padding:7px 12px}
@@ -82,4 +83,27 @@ QLabel#importedFileType{color:#64748b;font-size:10px}
 QLabel#importedFileLoadedMarker{color:#15803d;font-size:15px;font-weight:800}
 QLabel#importedFileMissingMarker{color:#94a3b8;font-size:15px;font-weight:800}
 QLabel#importedFileLoadedStatus{background:#dcfce7;color:#166534;border:1px solid #86d6a0;border-radius:10px;padding:3px 7px;font-size:10px;font-weight:750}
-QLabel#importedFileMissingStatus{background:#e2e8f0;color:#475569;border:1px solid #cbd5e1;border-radius:10px;padding:3px 7px;font-size:10px;font-weight:750}'''
+QLabel#importedFileMissingStatus{background:#e2e8f0;color:#475569;border:1px solid #cbd5e1;border-radius:10px;padding:3px 7px;font-size:10px;font-weight:750}
+QLabel#fleetRegistration{color:#0f172a;font-size:18px;font-weight:800}
+QLabel#fleetModel{color:#334155;font-size:12px;font-weight:650}
+QFrame#fleetFact{background:#f8fafc;border:1px solid #d7e0eb;border-radius:8px}
+QLabel#fleetFactValue{color:#0f172a;font-size:14px;font-weight:800}
+QLabel#fleetFactLabel{color:#64748b;font-size:9px;font-weight:750}
+QFrame#fleetParameterCard{background:#f8fafc;border:1px solid #cbd5e1;border-radius:9px}
+QLabel#fleetParameterTitle{color:#334155;font-size:10px;font-weight:800} QLabel#fleetParameterUnit{color:#64748b;font-size:8px;font-weight:700}
+QLabel#fleetParameterValue{color:#0f172a;font-size:15px;font-weight:850}
+QLabel#fleetParameterStatistic{color:#64748b;font-size:10px;font-weight:800}
+
+
+QLabel#fleetFlightCount{color:#2563eb;font-size:10px;font-weight:750}
+
+QComboBox#flightSort{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650}
+QComboBox#flightSort:hover{background:#f8fbff;border-color:#7aa7e8}
+QComboBox#flightSort:focus{border:2px solid #2563eb}
+
+QLabel#selectionCount{background:transparent;color:#64748b;padding:5px 8px;font-size:11px;font-weight:650}
+QLabel#selectionCount[active="true"]{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd;border-radius:10px;font-weight:750}
+QWidget#selectionCell,QWidget#flightCell,QWidget#tableActions{background:transparent;border:none;border-right:1px solid #d3dce8}
+QWidget#selectionCell[rowSelected="true"],QWidget#flightCell[rowSelected="true"],QWidget#tableActions[rowSelected="true"]{background:#dbeafe}
+QWidget#selectionCell[rowSelected="true"]{border-left:3px solid #2563eb}
+'''

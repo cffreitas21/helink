@@ -5,9 +5,12 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import *
 
-from helink.ui.dialogs import AboutDialog, AddAircraftDialog
-from helink.ui.pages import AircraftPage, DashboardPage, FlightPage
+from helink.ui.dialogs import (
+    AboutDialog, AddAircraftDialog, ImportSummaryDialog,
+)
+from helink.ui.pages import DashboardPage, FlightListPage, FlightDetailsPage
 from helink.ui.widgets import Sidebar
+from helink.ui.widgets.imported_files_button import FILE_TYPE_LABELS
 
 
 class MainWindow(QMainWindow):
@@ -56,32 +59,32 @@ class MainWindow(QMainWindow):
         root.addWidget(body, 1)
 
         self.dashboard = DashboardPage(self.aircraft_controller)
-        self.aircraft = AircraftPage(
+        self.flight_list = FlightListPage(
             self.aircraft_controller, self.flight_controller
         )
-        self.flight = FlightPage(
+        self.flight_details = FlightDetailsPage(
             self.aircraft_controller,
             self.flight_controller,
             self.report_controller,
         )
-        for page in (self.dashboard, self.aircraft, self.flight):
+        for page in (self.dashboard, self.flight_list, self.flight_details):
             self.stack.addWidget(page)
 
         self.dashboard.aircraft_selected.connect(
             self.navigation_controller.show_aircraft
         )
         self.dashboard.add_requested.connect(self.add_aircraft)
-        self.aircraft.back_requested.connect(
+        self.flight_list.back_requested.connect(
             self.navigation_controller.show_dashboard
         )
-        self.aircraft.flight_selected.connect(
+        self.flight_list.flight_selected.connect(
             self.navigation_controller.show_flight
         )
-        self.aircraft.import_requested.connect(self.import_for_aircraft)
-        self.flight.back_requested.connect(
+        self.flight_list.import_requested.connect(self.import_for_aircraft)
+        self.flight_details.back_requested.connect(
             self.navigation_controller.back_to_aircraft
         )
-        self.flight.import_requested.connect(self.import_for_flight)
+        self.flight_details.import_requested.connect(self.import_for_flight)
         self.navigation_controller.show_dashboard()
 
     def setup_menu_bar(self):
@@ -106,13 +109,13 @@ class MainWindow(QMainWindow):
         self.dashboard.refresh()
         self.stack.setCurrentWidget(self.dashboard)
 
-    def display_aircraft(self, aircraft_id):
-        self.aircraft.load(aircraft_id)
-        self.stack.setCurrentWidget(self.aircraft)
+    def display_flight_list(self, aircraft_id):
+        self.flight_list.load(aircraft_id)
+        self.stack.setCurrentWidget(self.flight_list)
 
     def display_flight(self, flight_id):
-        self.flight.load(flight_id)
-        self.stack.setCurrentWidget(self.flight)
+        self.flight_details.load(flight_id)
+        self.stack.setCurrentWidget(self.flight_details)
 
     def add_aircraft(self):
         dialog = AddAircraftDialog(self)
@@ -151,51 +154,92 @@ class MainWindow(QMainWindow):
         )
         self.import_for_aircraft(selected_aircraft.id)
 
+    def _import_progress(self):
+        dialog = QProgressDialog(
+            'Preparing flight data import...', 'Cancel Import', 0, 100, self
+        )
+        dialog.setWindowTitle('Importing Flight Data')
+        dialog.setWindowModality(Qt.WindowModal)
+        dialog.setMinimumDuration(0)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.setMinimumWidth(440)
+        dialog.setValue(0)
+        dialog.show()
+        QApplication.processEvents()
+
+        def update(value, message):
+            dialog.setLabelText(message)
+            dialog.setValue(max(0, min(100, round(value))))
+            QApplication.processEvents()
+            if dialog.wasCanceled():
+                raise InterruptedError('Import cancelled by the user.')
+
+        return dialog, update
+
     def import_for_aircraft(self, aircraft_id):
         files, _ = QFileDialog.getOpenFileNames(
             self,
-            'Load Garmin G1000H Data',
+            'Select Flight Data Files',
             '',
-            'Garmin (*.zip *.csv);;ZIP (*.zip);;CSV (*.csv)',
+            'Flight Data (*.zip *.csv);;ZIP Archives (*.zip);;CSV Files (*.csv)',
         )
         if not files:
             return
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+
+        dialog, progress = self._import_progress()
+        result = None
         try:
-            count = self.import_controller.import_for_aircraft(files, aircraft_id)
-            QMessageBox.information(
-                self,
-                'Import complete',
-                f'{count} flight(s) imported into the SQLite database.',
+            result = self.import_controller.import_for_aircraft(
+                files, aircraft_id, progress
             )
-            self.navigation_controller.show_aircraft(aircraft_id)
+            if result.file_count:
+                self.navigation_controller.show_aircraft(aircraft_id)
+        except InterruptedError:
+            self.statusBar().showMessage('Import cancelled.', 4000)
         except Exception as error:
             QMessageBox.critical(
-                self, 'Import error', f'The files could not be processed:\n{error}'
+                self,
+                'Import error',
+                f'The files could not be processed:\n{error}',
             )
         finally:
-            QApplication.restoreOverrideCursor()
+            dialog.close()
+            dialog.deleteLater()
+        if result is not None:
+            ImportSummaryDialog(result, self).exec()
 
     def import_for_flight(self, flight_id, file_type):
+        display_type = FILE_TYPE_LABELS.get(file_type, 'Flight Data')
         files, _ = QFileDialog.getOpenFileNames(
             self,
-            f'Add {file_type} to flight',
+            f'Select {display_type} Files',
             '',
             'CSV (*.csv);;ZIP (*.zip)',
         )
         if not files:
             return
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+
+        dialog, progress = self._import_progress()
+        result = None
         try:
-            self.import_controller.add_to_flight(files, flight_id, file_type)
-            self.navigation_controller.show_flight(flight_id)
-            QMessageBox.information(
-                self, 'Import complete', f'{file_type} added to the flight.'
+            result = self.import_controller.add_to_flight(
+                files, flight_id, file_type, progress
             )
+            if result.file_count:
+                self.navigation_controller.show_flight(flight_id)
+        except InterruptedError:
+            self.statusBar().showMessage('Import cancelled.', 4000)
         except Exception as error:
-            QMessageBox.critical(self, 'Import error', str(error))
+            QMessageBox.critical(
+                self, 'Import error',
+                f'The selected files could not be processed:\n{error}',
+            )
         finally:
-            QApplication.restoreOverrideCursor()
+            dialog.close()
+            dialog.deleteLater()
+        if result is not None:
+            ImportSummaryDialog(result, self).exec()
 
     def export_database(self):
         suggested = str(Path.home() / 'helink-export.db')

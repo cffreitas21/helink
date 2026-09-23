@@ -44,6 +44,7 @@ class OverviewTab(QWidget):
             ('arrival', 'Arrival'),
             ('duration', 'Duration'),
             ('origin', 'Origin'),
+            ('destination', 'Destination'),
         )
         for index, (key, label) in enumerate(summary_fields):
             box = QVBoxLayout()
@@ -54,7 +55,7 @@ class OverviewTab(QWidget):
             self.summary_values[key] = value
             box.addWidget(caption)
             box.addWidget(value)
-            summary_grid.addLayout(box, 0, index)
+            summary_grid.addLayout(box, index // 3, index % 3)
         summary.layout.addLayout(summary_grid)
         self.content_layout.addWidget(summary)
 
@@ -204,6 +205,9 @@ class OverviewTab(QWidget):
         )
         self.summary_values['duration'].setText(flight.duration or '\u2014')
         self.summary_values['origin'].setText(format_airport(flight.origin))
+        self.summary_values['destination'].setText(
+            format_airport(flight.destination)
+        )
 
         itt = self._values(engine, 'itt')
         torque = self._values(engine, 'tq')

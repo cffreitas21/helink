@@ -12,8 +12,9 @@ class AircraftController:
     def list_aircraft(self):
         return self.repository.find_all()
 
-    def engine_averages(self, aircraft_id):
-        return self.repository.engine_averages(aircraft_id)
+
+    def fleet_summaries(self):
+        return self.repository.fleet_summaries()
 
     def add(self, registration, model, serial_number):
         return self.repository.add(registration, model, serial_number)

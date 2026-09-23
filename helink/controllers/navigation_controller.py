@@ -5,7 +5,7 @@ from typing import Protocol
 
 class MainView(Protocol):
     def display_dashboard(self): ...
-    def display_aircraft(self, aircraft_id): ...
+    def display_flight_list(self, aircraft_id): ...
     def display_flight(self, flight_id): ...
 
 
@@ -27,7 +27,7 @@ class NavigationController:
     def show_aircraft(self, aircraft_id):
         self.current_aircraft = aircraft_id
         if self.view:
-            self.view.display_aircraft(aircraft_id)
+            self.view.display_flight_list(aircraft_id)
 
     def show_flight(self, flight_id):
         if self.view:

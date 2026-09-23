@@ -10,6 +10,8 @@ from urllib.parse import unquote, urlsplit
 
 class _AssetHandler(BaseHTTPRequestHandler):
     assets: Path
+    documents: dict[str, bytes]
+    document_lock: threading.Lock
 
     def log_message(self, *_):
         pass
@@ -27,6 +29,20 @@ class _AssetHandler(BaseHTTPRequestHandler):
 
     def _serve(self,send_body):
         name=Path(unquote(urlsplit(self.path).path).lstrip('/')).name
+        with self.document_lock:
+            document = self.documents.get(name)
+        if document is not None:
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(document)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            if send_body:
+                try:
+                    self.wfile.write(document)
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    pass  # The user switched flights before loading finished.
+            return
         path=(self.assets/name).resolve()
         if path.parent!=self.assets.resolve() or not path.is_file():
             self.send_error(404); return
@@ -56,10 +72,26 @@ class _AssetHandler(BaseHTTPRequestHandler):
 class MapAssetServer:
     def __init__(self,assets):
         assets=Path(assets).resolve()
-        handler=type('HELINKAssetHandler',(_AssetHandler,),{'assets':assets})
+        self.documents = {}
+        self.document_lock = threading.Lock()
+        handler=type('HELINKAssetHandler',(_AssetHandler,),{
+            'assets': assets,
+            'documents': self.documents,
+            'document_lock': self.document_lock,
+        })
         self.httpd=ThreadingHTTPServer(('127.0.0.1',0),handler)
         self.thread=threading.Thread(target=self.httpd.serve_forever,name='HELINK offline map',daemon=True)
         self.thread.start(); self.base_url=f'http://127.0.0.1:{self.httpd.server_port}/'
+
+    def set_document(self, name: str, html: str) -> str:
+        """Serve route HTML locally without WebEngine's setHtml size limit."""
+        with self.document_lock:
+            self.documents[name] = html.encode('utf-8')
+        return self.base_url + name
+
+    def remove_document(self, name: str):
+        with self.document_lock:
+            self.documents.pop(name, None)
 
 
 _server=None

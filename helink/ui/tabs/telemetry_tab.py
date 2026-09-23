@@ -15,21 +15,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from helink.ui.telemetry_parameters import TELEMETRY_PARAMETERS
 from helink.ui.widgets import Card, Plot
 
 
 class TelemetryTab(QWidget):
-    CHARTS = (
-        ('n1', 'N1', '%', '#1f77b4'),
-        ('n2', 'N2', '%', '#ff7f0e'),
-        ('nr', 'NR', '%', '#2ca02c'),
-        ('itt', 'ITT', '°C', '#1f77b4'),
-        ('eng_ot', 'ENG OIL TEMP', '°C', '#2ca02c'),
-        ('eng_op', 'ENG OIL PRESS', 'psi', '#d62728'),
-        ('xmsn_ot', 'XMSN OIL TEMP', '°C', '#9467bd'),
-        ('xmsn_op', 'XMSN OIL PRESS', 'psi', '#8c564b'),
-        ('fuel_press', 'FUEL PRESS', 'psi', '#e377c2'),
-    )
+    CHARTS = TELEMETRY_PARAMETERS
     INSTRUMENTS = (
         ('n1', 'N1', '%'),
         ('n2', 'N2', '%'),
