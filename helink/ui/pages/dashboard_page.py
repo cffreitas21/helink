@@ -91,12 +91,9 @@ class DashboardPage(QWidget):
     def _aircraft_card(self, aircraft, summary):
         card = QFrame()
         card.setObjectName('aircraftRow')
-        root = QVBoxLayout(card)
-        root.setContentsMargins(16, 13, 16, 15)
-        root.setSpacing(12)
-
-        header = QHBoxLayout()
-        header.setSpacing(12)
+        root = QHBoxLayout(card)
+        root.setContentsMargins(14, 10, 14, 10)
+        root.setSpacing(10)
 
         icon = QFrame()
         icon.setObjectName('aircraftIcon')
@@ -109,41 +106,47 @@ class DashboardPage(QWidget):
             'font-size:19px;color:#2563eb;background:transparent'
         )
         icon_layout.addWidget(glyph)
-        header.addWidget(icon)
+        root.addWidget(icon, 0, Qt.AlignVCenter)
 
-        identity = QVBoxLayout()
+        identity_panel = QWidget()
+        identity_panel.setObjectName('fleetIdentity')
+        identity_panel.setMinimumWidth(150)
+        identity_panel.setMaximumWidth(180)
+        identity_panel.setMinimumHeight(68)
+        identity_panel.setStyleSheet('background:transparent')
+        identity = QVBoxLayout(identity_panel)
+        identity.setContentsMargins(0, 0, 0, 0)
         identity.setSpacing(2)
         registration = QLabel(aircraft.registration)
         registration.setObjectName('fleetRegistration')
         identity.addWidget(registration)
-        details = QLabel(f'{aircraft.model}  \N{MIDDLE DOT}  SN {aircraft.serial_number}')
+        details = QLabel(aircraft.model)
         details.setObjectName('fleetModel')
-        details.setToolTip(
-            f'{aircraft.model} · Serial Number {aircraft.serial_number}'
-        )
+        details.setWordWrap(True)
+        details.setTextFormat(Qt.PlainText)
+        details.setToolTip(aircraft.model)
         identity.addWidget(details)
+        serial = QLabel(f'SN {aircraft.serial_number}')
+        serial.setObjectName('fleetSerial')
+        serial.setWordWrap(True)
+        serial.setTextFormat(Qt.PlainText)
+        serial.setToolTip(f'Serial Number {aircraft.serial_number}')
+        metadata = QHBoxLayout()
+        metadata.setSpacing(8)
+        metadata.addWidget(serial)
+        metadata.addStretch()
         flight_count = QLabel(
             f'{aircraft.flight_count} imported flight'
             if aircraft.flight_count == 1
             else f'{aircraft.flight_count} imported flights'
         )
         flight_count.setObjectName('fleetFlightCount')
-        identity.addWidget(flight_count)
-        header.addLayout(identity)
-        header.addStretch()
-
-        open_button = QPushButton('View Flights  \N{RIGHTWARDS ARROW}')
-        open_button.setFixedSize(138, 44)
-        open_button.clicked.connect(
-            lambda _, aircraft_id=aircraft.id:
-            self.aircraft_selected.emit(aircraft_id)
-        )
-        header.addWidget(open_button)
-        root.addLayout(header)
+        metadata.addWidget(flight_count)
+        identity.addLayout(metadata)
+        root.addWidget(identity_panel, 0, Qt.AlignVCenter)
 
         metrics = QHBoxLayout()
-        metrics.setSpacing(6)
-        metrics.addStretch()
+        metrics.setSpacing(4)
         for key, label, unit, _color in TELEMETRY_PARAMETERS:
             if key not in FLEET_PARAMETER_KEYS:
                 continue
@@ -155,8 +158,16 @@ class DashboardPage(QWidget):
                     unit,
                 )
             )
-        metrics.addStretch()
         root.addLayout(metrics)
+        root.addStretch()
+
+        open_button = QPushButton('View Flights  \N{RIGHTWARDS ARROW}')
+        open_button.setFixedSize(138, 68)
+        open_button.clicked.connect(
+            lambda _, aircraft_id=aircraft.id:
+            self.aircraft_selected.emit(aircraft_id)
+        )
+        root.addWidget(open_button, 0, Qt.AlignVCenter)
         return card
     def choose_aircraft_to_delete(self):
         aircraft = self.aircraft_controller.list_aircraft()

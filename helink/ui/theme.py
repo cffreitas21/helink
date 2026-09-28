@@ -115,7 +115,7 @@ QLabel#importedFileMissingMarker{color:#94a3b8;font-size:15px;font-weight:800}
 QLabel#importedFileLoadedStatus{background:#dcfce7;color:#166534;border:1px solid #86d6a0;border-radius:10px;padding:3px 7px;font-size:10px;font-weight:750}
 QLabel#importedFileMissingStatus{background:#e2e8f0;color:#475569;border:1px solid #cbd5e1;border-radius:10px;padding:3px 7px;font-size:10px;font-weight:750}
 QLabel#fleetRegistration{color:#0f172a;font-size:18px;font-weight:800}
-QLabel#fleetModel{color:#334155;font-size:12px;font-weight:650}
+QLabel#fleetModel,QLabel#fleetSerial{color:#334155;font-size:12px;font-weight:650}
 QFrame#fleetFact{background:#f8fafc;border:1px solid #d7e0eb;border-radius:8px}
 QLabel#fleetFactValue{color:#0f172a;font-size:14px;font-weight:800}
 QLabel#fleetFactLabel{color:#64748b;font-size:9px;font-weight:750}

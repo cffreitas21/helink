@@ -7,10 +7,10 @@ from unittest.mock import Mock
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QScrollArea, QWidget
 
 from helink.models.aircraft import Aircraft
 from helink.ui.pages.dashboard_page import DashboardPage
@@ -35,12 +35,17 @@ class FleetParameterCardTests(unittest.TestCase):
         self.addCleanup(card.close)
         return card
 
-    def test_height_is_reduced_without_changing_width_or_value_font_size(self):
+    def test_compact_card_keeps_height_and_original_font_sizes(self):
         card = self.make_card()
         self.assertEqual(card.height(), 68)
-        self.assertEqual(card.width(), 181)
+        self.assertEqual(card.width(), 120)
         for label in card.findChildren(QLabel, 'fleetParameterValue'):
             self.assertEqual(label.font().pixelSize(), 15)
+        self.assertEqual(
+            card.findChild(QLabel, 'fleetParameterTitle').font().pixelSize(), 10,
+        )
+        for label in card.findChildren(QLabel, 'fleetParameterStatistic'):
+            self.assertEqual(label.font().pixelSize(), 10)
 
     def test_all_parameter_labels_remain_readable_inside_the_card(self):
         for title, unit in (
@@ -98,6 +103,65 @@ class FleetParameterCardTests(unittest.TestCase):
         )
         QTest.mouseClick(button, Qt.LeftButton)
         self.assertEqual(selected, ['test'])
+
+    def test_metrics_are_beside_aircraft_identity_and_before_view_flights(self):
+        controller = Mock()
+        controller.list_aircraft.return_value = [
+            Aircraft(id='test', registration='TEST', model='Bell 505',
+                     serial_number='65000', flight_count=4),
+        ]
+        controller.fleet_summaries.return_value = {
+            'test': {'avg_itt': 645.5, 'max_itt': 850.0},
+        }
+        page = DashboardPage(controller)
+        self.addCleanup(page.deleteLater)
+        self.addCleanup(page.close)
+        page.resize(1215, 900)
+        page.refresh()
+        page.show()
+        for _ in range(5):
+            self.app.processEvents()
+        cards = page.findChildren(FleetParameterCard)
+        row = cards[0].parentWidget()
+        identity = row.findChild(QWidget, 'fleetIdentity')
+        button = next(
+            widget for widget in row.findChildren(QPushButton)
+            if widget.text().startswith('View Flights')
+        )
+        self.assertLess(identity.geometry().right(), cards[0].x())
+        self.assertLess(cards[-1].geometry().right(), button.x())
+        model = identity.findChild(QLabel, 'fleetModel')
+        serial = identity.findChild(QLabel, 'fleetSerial')
+        registration = identity.findChild(QLabel, 'fleetRegistration')
+        count = identity.findChild(QLabel, 'fleetFlightCount')
+        self.assertEqual(model.text(), 'Bell 505')
+        self.assertEqual(serial.text(), 'SN 65000')
+        self.assertLess(registration.geometry().bottom(), model.y())
+        self.assertLess(model.geometry().bottom(), serial.y())
+        self.assertEqual(serial.y(), count.y())
+        self.assertEqual(serial.font().pixelSize(), model.font().pixelSize())
+        self.assertEqual(
+            len({widget.y() for widget in (identity, *cards, button)}), 1,
+        )
+        self.assertEqual(
+            len({widget.height() for widget in (identity, *cards, button)}), 1,
+        )
+        self.assertEqual(
+            len({widget.geometry().center().y() for widget in (*cards, button)}), 1,
+        )
+        self.assertLessEqual(
+            abs(identity.geometry().center().y() - cards[0].geometry().center().y()), 1,
+        )
+        for left, right in zip(cards, cards[1:]):
+            self.assertEqual(right.x() - left.geometry().right() - 1, 4)
+        self.assertEqual(
+            page.findChild(QScrollArea).horizontalScrollBar().maximum(), 0,
+        )
+        self.assertLess(row.height(), 110)
+        self.assertEqual(
+            [label.text() for label in cards[0].findChildren(QLabel, 'fleetParameterValue')],
+            ['645.5', '850.0'],
+        )
 
 
 if __name__ == '__main__':
