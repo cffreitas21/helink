@@ -25,7 +25,7 @@ class Sidebar(QFrame):
         layout.addWidget(tagline)
         layout.addSpacing(25)
 
-        self.dashboard_button = QPushButton('Fleet Overview')
+        self.dashboard_button = QPushButton('Fleet Management')
         self.dashboard_button.setObjectName('nav')
         self.dashboard_button.clicked.connect(self.dashboard_requested)
         layout.addWidget(self.dashboard_button)

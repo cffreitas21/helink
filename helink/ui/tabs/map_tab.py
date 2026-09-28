@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from helink.services.map_server import get_map_server
 from helink.services.airport_formatter import format_airport
+from helink.services.flight_route_service import route_coordinates
 
 
 class OfflineMapPage(QWebEnginePage):
@@ -89,15 +90,10 @@ class OfflineRouteMap(QWebEngineView):
 
     @staticmethod
     def _point(row):
-        try:
-            lat = float(row.latitude)
-            lon = float(row.longitude)
-        except (TypeError, ValueError):
+        coordinates = route_coordinates(row)
+        if coordinates is None:
             return None
-        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-            return None
-        if not (-11 <= lon <= 5 and 35 <= lat <= 45):
-            return None
+        lat, lon = coordinates
 
         def value(attribute):
             item = getattr(row, attribute)

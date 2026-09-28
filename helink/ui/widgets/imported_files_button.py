@@ -39,7 +39,7 @@ def _ordered_file_types(imported):
     return ordered
 
 
-def _file_row(file_type, loaded):
+def _file_row(file_type, loaded, *, show_status=True):
     row = QFrame()
     row.setObjectName(
         'importedFileLoaded' if loaded else 'importedFileMissing'
@@ -47,41 +47,51 @@ def _file_row(file_type, loaded):
     row_layout = QHBoxLayout(row)
     row_layout.setContentsMargins(10, 8, 10, 8)
     row_layout.setSpacing(10)
+    if not show_status:
+        row_layout.setContentsMargins(8, 7, 8, 7)
+        row_layout.setSpacing(8)
+    status_text = 'Imported' if loaded else 'Missing'
+    row.setToolTip(f'{FILE_TYPE_LABELS.get(file_type, file_type)}: {status_text}')
+    row.setAccessibleName(f'{file_type}: {status_text}')
 
     marker = QLabel('\N{CHECK MARK}' if loaded else '\N{EM DASH}')
     marker.setObjectName(
         'importedFileLoadedMarker' if loaded else 'importedFileMissingMarker'
     )
     marker.setAlignment(Qt.AlignCenter)
-    marker.setFixedWidth(22)
+    marker.setFixedWidth(22 if show_status else 18)
     row_layout.addWidget(marker)
 
     text_box = QVBoxLayout()
     text_box.setSpacing(1)
     label = QLabel(FILE_TYPE_LABELS.get(file_type, file_type))
     label.setObjectName('importedFileName')
+    label.setWordWrap(not show_status)
     exact_name = QLabel(file_type)
     exact_name.setObjectName('importedFileType')
+    exact_name.setWordWrap(not show_status)
     exact_name.setTextInteractionFlags(Qt.TextSelectableByMouse)
     text_box.addWidget(label)
     text_box.addWidget(exact_name)
     row_layout.addLayout(text_box, 1)
 
-    status = QLabel('Imported' if loaded else 'Missing')
-    status.setObjectName(
-        'importedFileLoadedStatus' if loaded else 'importedFileMissingStatus'
-    )
-    status.setAlignment(Qt.AlignCenter)
-    status.setMinimumWidth(68)
-    row_layout.addWidget(status)
+    if show_status:
+        status = QLabel(status_text)
+        status.setObjectName(
+            'importedFileLoadedStatus' if loaded else 'importedFileMissingStatus'
+        )
+        status.setAlignment(Qt.AlignCenter)
+        status.setMinimumWidth(68)
+        row_layout.addWidget(status)
     return row
 
 
 class ImportedFilesList(QScrollArea):
     """Reusable imported/missing file coverage list."""
 
-    def __init__(self, files=(), parent=None):
+    def __init__(self, files=(), parent=None, *, show_status=True):
         super().__init__(parent)
+        self.show_status = show_status
         self.setObjectName('importedFilesScroll')
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -94,9 +104,13 @@ class ImportedFilesList(QScrollArea):
         content.setObjectName('importedFilesContent')
         layout = QVBoxLayout(content)
         layout.setContentsMargins(10, 8, 10, 10)
+        if not self.show_status:
+            layout.setContentsMargins(6, 6, 6, 8)
         layout.setSpacing(5)
         for file_type in _ordered_file_types(imported):
-            layout.addWidget(_file_row(file_type, file_type in imported))
+            layout.addWidget(_file_row(
+                file_type, file_type in imported, show_status=self.show_status,
+            ))
         layout.addStretch()
 
         previous = self.takeWidget()

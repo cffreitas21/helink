@@ -33,6 +33,17 @@ QPushButton#tableDelete:hover{background:#fee2e2;color:#991b1b;border-color:#b91
 
 QLabel#overviewCaption{color:#64748b;font-size:10px;font-weight:750;letter-spacing:.5px}
 QLabel#overviewValue{color:#0f172a;font-size:16px;font-weight:750}
+QWidget#overviewContent{background:transparent}
+QLabel#overviewRouteValue{color:#334155;font-size:12px;font-weight:600}
+QToolButton#overviewViewRoute{background:#ffffff;color:#1e3a8a;border:1px solid #94a3b8;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:750}
+QToolButton#overviewViewRoute:hover{background:#dbeafe;border-color:#2563eb}
+QToolButton#overviewViewRoute:focus{border:2px solid #2563eb}
+QToolButton#overviewViewRoute:disabled{background:#f8fafc;color:#64748b;border-color:#cbd5e1}
+QToolButton#overviewViewRoute::menu-indicator{image:none}
+QLabel#overviewRouteArrow{color:#64748b;font-size:18px}
+QLabel#overviewHint{color:#526175;font-size:11px}
+QLabel#overviewSectionTitle{color:#334155;font-size:11px;font-weight:800;padding-top:4px;padding-bottom:2px}
+QLabel#overviewUnit{color:#526175;font-size:11px;font-weight:600}
 QFrame#overviewMetric{background:#f8fafc;border:1px solid #d7e0eb;border-radius:8px}
 QLabel#overviewMetricValue{color:#0f172a;font-size:18px;font-weight:800}
 QLabel#overviewMetricLabel{color:#526175;font-size:10px;font-weight:700}
@@ -41,8 +52,27 @@ QFrame#filesPanel{background:#f8fafc;border:1px solid #bdcad9;border-radius:11px
 QListWidget#overviewFiles{background:#ffffff;border:1px solid #d3dce8;border-radius:7px;padding:4px}
 QListWidget#overviewFiles::item{padding:8px 7px;border-bottom:1px solid #edf1f5;color:#26364c}
 
-QFrame#overviewParameter{background:#f8fafc;border:1px solid #d7e0eb;border-radius:8px}
+QToolButton#overviewParameter{background:#f8fafc;border:1px solid #d7e0eb;border-radius:8px;padding:0px}
+QToolButton#overviewParameter:hover{background:#eef6ff;border-color:#93b7ef}
+QToolButton#overviewParameter:focus{border:2px solid #2563eb}
+QToolButton#overviewParameter::menu-indicator{image:none}
 QLabel#overviewParameterTitle{color:#334155;font-size:11px;font-weight:750}
+QToolButton#overviewExceedances,QToolButton#overviewMiscmp{background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:0px}
+QToolButton#overviewExceedances[eventActive="true"]{background:#fff4e6;border:1px solid #e9a64d}
+QToolButton#overviewMiscmp[eventActive="true"]{background:#f3e8ff;border:1px solid #c084fc}
+QToolButton#overviewExceedances:hover,QToolButton#overviewMiscmp:hover{border:1px solid #2563eb}
+QToolButton#overviewExceedances:focus,QToolButton#overviewMiscmp:focus{border:2px solid #2563eb}
+QToolButton#overviewExceedances::menu-indicator,QToolButton#overviewMiscmp::menu-indicator{image:none}
+QLabel#overviewEventValue{color:#475569;font-size:27px;font-weight:800}
+QLabel#overviewEventTitle{color:#334155;font-size:13px;font-weight:750}
+QLabel#overviewEventNote{color:#526175;font-size:10px}
+QToolButton#overviewExceedances QLabel#overviewEventNote{color:#475569;font-size:12px;font-weight:600}
+QToolButton#overviewMiscmp QLabel#overviewEventValue{font-size:22px}
+QToolButton#overviewMiscmp QLabel#overviewEventTitle{font-size:12px}
+QLabel#overviewEventArrow{color:#526175;font-size:16px}
+QToolButton#overviewExceedances[eventActive="true"] QLabel#overviewEventValue,QToolButton#overviewExceedances[eventActive="true"] QLabel#overviewEventTitle{color:#92400e}
+QToolButton#overviewMiscmp[eventActive="true"] QLabel#overviewEventValue,QToolButton#overviewMiscmp[eventActive="true"] QLabel#overviewEventTitle{color:#7e22ce}
+QToolButton#overviewExceedances:disabled QLabel,QToolButton#overviewMiscmp:disabled QLabel{color:#64748b}
 QToolButton#eventTotal{background:#eef2f7;border:1px solid #cbd5e1;border-radius:8px}
 QToolButton#eventCas{background:#e8f1ff;border:1px solid #93b7ef;border-radius:8px}
 QToolButton#eventExceedance{background:#fff1e8;border:1px solid #f0ad75;border-radius:8px}
@@ -100,6 +130,30 @@ QLabel#fleetFlightCount{color:#2563eb;font-size:10px;font-weight:750}
 QComboBox#flightSort{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650}
 QComboBox#flightSort:hover{background:#f8fbff;border-color:#7aa7e8}
 QComboBox#flightSort:focus{border:2px solid #2563eb}
+
+QLabel#telemetryToolbarTitle{color:#334155;font-size:12px;font-weight:700}
+QSlider#telemetryTimeline::groove:horizontal{height:6px;background:#e2e8f0;border:none;border-radius:3px}
+QSlider#telemetryTimeline::sub-page:horizontal{background:#2563eb;border-radius:3px}
+QSlider#telemetryTimeline::handle:horizontal{background:#2563eb;border:none;width:18px;margin:-6px 0;border-radius:9px}
+QSlider#telemetryTimeline::handle:horizontal:hover{background:#1d4ed8}
+QSlider#telemetryTimeline::handle:horizontal:pressed{background:#1e40af}
+QComboBox#telemetryRows{background:#ffffff;color:#1e293b;border:1px solid #94a3b8;border-radius:6px;padding:5px 8px;font-size:12px}
+QToolButton#chartFilterButton{background:#ffffff;color:#1e293b;border:1px solid #94a3b8;border-radius:7px;padding:7px 22px 7px 12px;font-weight:700}
+QToolButton#chartFilterButton:hover{background:#eaf0f6;border-color:#64748b}
+QPushButton#combineChartsButton{background:#ffffff;color:#1e293b;border:1px solid #94a3b8;border-radius:7px;padding:7px 12px;font-weight:700}
+QPushButton#combineChartsButton:hover{background:#eaf0f6;border-color:#64748b}
+QPushButton#combineChartsButton:checked{background:#0b1220;color:#ffffff;border-color:#0b1220}
+QPushButton#combineChartsButton:checked:hover{background:#1e293b;border-color:#1e293b}
+QPushButton#combineChartsButton:focus{border:2px solid #64748b}
+QWidget#chartFilterContent{background:#ffffff}
+QLabel#chartFilterTitle{color:#0f172a;font-size:14px;font-weight:750}
+QWidget#chartFilterContent QCheckBox{background:transparent;color:#1e293b;font-size:13px;spacing:8px;padding:4px 2px}
+QPushButton#chartFilterBulk{background:#f8fafc;color:#334155;border:1px solid #cbd5e1;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:650}
+QPushButton#chartFilterBulk:hover{background:#dbeafe;border-color:#93b7ef}
+QFrame#chartFilterDivider{background:#e2e8f0;border:none;min-height:1px;max-height:1px}
+QWidget#telemetryEmptyState{background:transparent}
+QLabel#telemetryEmptyTitle{color:#334155;font-size:16px;font-weight:750}
+QLabel#telemetryEmptyHint{color:#64748b;font-size:12px}
 
 QLabel#selectionCount{background:transparent;color:#64748b;padding:5px 8px;font-size:11px;font-weight:650}
 QLabel#selectionCount[active="true"]{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd;border-radius:10px;font-weight:750}

@@ -1,32 +1,59 @@
-from statistics import mean
-
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel,
-    QScrollArea, QSizePolicy, QToolButton,
-    QVBoxLayout, QWidget,
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea,
+    QSizePolicy, QToolButton, QVBoxLayout, QWidget,
 )
 
 from helink.services.airport_formatter import format_airport
-from helink.ui.widgets import Card, ImportedFilesList
+from helink.services.flight_overview_summary import (
+    flight_parameter_statistics, important_flight_events,
+)
+from helink.services.flight_route_service import flight_route_availability
+from helink.ui.widgets import (
+    Card, ImportedFilesList, OverviewEventButton, OverviewParameterButton,
+)
 from helink.ui.widgets.imported_files_button import EXPECTED_FILE_TYPES
+
+
+PARAMETER_GROUPS = (
+    ('Temperatures', (
+        ('itt', 'ITT', '\u00b0C', 1),
+        ('eng_ot', 'ENG OIL TEMP', '\u00b0C', 1),
+        ('xmsn_ot', 'XMSN OIL TEMP', '\u00b0C', 1),
+        ('oat', 'OAT', '\u00b0C', 1),
+    )),
+    ('Pressures', (
+        ('eng_op', 'ENG OIL PRESS', 'psi', 1),
+        ('xmsn_op', 'XMSN OIL PRESS', 'psi', 1),
+        ('fuel_press', 'FUEL PRESS', 'psi', 1),
+    )),
+    ('Engine & Flight', (
+        ('n1', 'N1', '%', 1),
+        ('n2', 'N2', '%', 1),
+        ('nr', 'NR', '%', 1),
+        ('tq', 'TORQUE', '%', 1),
+        ('ias', 'IAS', 'kt', 1),
+        ('alt_ind', 'ALTITUDE', 'ft', 0),
+    )),
+)
 
 
 class OverviewTab(QWidget):
     import_requested = Signal(str)
     event_requested = Signal(str)
-
+    route_requested = Signal()
+    parameter_requested = Signal(str)
 
     def __init__(self):
         super().__init__()
         root = QHBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(14)
-
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         content = QWidget()
+        content.setObjectName('overviewContent')
         self.content_layout = QVBoxLayout(content)
         self.content_layout.setContentsMargins(0, 0, 4, 0)
         self.content_layout.setSpacing(12)
@@ -34,257 +61,278 @@ class OverviewTab(QWidget):
         root.addWidget(scroll, 1)
 
         summary = Card('Flight Summary')
-        summary_grid = QGridLayout()
-        summary_grid.setHorizontalSpacing(28)
-        summary_grid.setVerticalSpacing(10)
+        summary.layout.setContentsMargins(14, 10, 14, 10)
+        summary.layout.setSpacing(7)
         self.summary_values = {}
-        summary_fields = (
-            ('date', 'Flight Date'),
-            ('departure', 'Departure'),
-            ('arrival', 'Arrival'),
-            ('duration', 'Duration'),
-            ('origin', 'Origin'),
-            ('destination', 'Destination'),
-        )
-        for index, (key, label) in enumerate(summary_fields):
-            box = QVBoxLayout()
-            caption = QLabel(label.upper())
+        timing = QGridLayout()
+        timing.setHorizontalSpacing(16)
+        timing.setVerticalSpacing(2)
+        for column, (key, label) in enumerate((
+            ('date', 'FLIGHT DATE'), ('departure', 'DEPARTURE'),
+            ('arrival', 'ARRIVAL'), ('duration', 'DURATION'),
+        )):
+            caption = QLabel(label)
             caption.setObjectName('overviewCaption')
             value = QLabel('\u2014')
             value.setObjectName('overviewValue')
+            value.setWordWrap(True)
+            timing.addWidget(caption, 0, column)
+            timing.addWidget(value, 1, column)
+            timing.setColumnStretch(column, 1)
             self.summary_values[key] = value
-            box.addWidget(caption)
-            box.addWidget(value)
-            summary_grid.addLayout(box, index // 3, index % 3)
-        summary.layout.addLayout(summary_grid)
+        for column, (key, label, span) in enumerate((
+            ('origin', 'ORIGIN', 1), ('destination', 'DESTINATION', 1),
+        )):
+            caption = QLabel(label)
+            caption.setObjectName('overviewCaption')
+            caption.setContentsMargins(0, 5, 0, 0)
+            value = QLabel('\u2014')
+            value.setObjectName('overviewRouteValue')
+            value.setTextFormat(Qt.PlainText)
+            value.setWordWrap(True)
+            timing.addWidget(caption, 2, column, 1, span)
+            timing.addWidget(value, 3, column, 1, span)
+            self.summary_values[key] = value
+        self.view_route_button = QToolButton()
+        self.view_route_button.setObjectName('overviewViewRoute')
+        self.view_route_button.setText('Route Unavailable')
+        self.view_route_button.setCursor(Qt.PointingHandCursor)
+        self.view_route_button.setEnabled(False)
+        self.view_route_button.clicked.connect(lambda: self.route_requested.emit())
+        timing.addWidget(
+            self.view_route_button, 2, 2, 2, 1, Qt.AlignLeft | Qt.AlignVCenter,
+        )
+        summary.layout.addLayout(timing)
         self.content_layout.addWidget(summary)
 
-        metrics_card = Card('Key Flight Parameters')
-        metrics_grid = QGridLayout()
-        metrics_grid.setSpacing(10)
-        self.metric_values = {}
-        parameter_specs = (
-            ('itt', 'ITT', '\u00b0C', 1),
-            ('torque', 'Torque', '%', 1),
-            ('ias', 'IAS', 'kt', 1),
-            ('eng_temp', 'ENG Oil Temperature', '\u00b0C', 1),
-            ('xmsn_temp', 'XMSN Oil Temperature', '\u00b0C', 1),
-            ('altitude', 'Altitude', 'ft', 0),
-        )
-        for index, (key, label, unit, decimals) in enumerate(parameter_specs):
-            metric = QFrame()
-            metric.setObjectName('overviewParameter')
-            layout = QVBoxLayout(metric)
-            layout.setContentsMargins(13, 10, 13, 11)
-            layout.setSpacing(7)
-            title = QLabel(label.upper())
-            title.setObjectName('overviewParameterTitle')
-            layout.addWidget(title)
-
-            values_row = QHBoxLayout()
-            values_row.setSpacing(12)
-            for statistic, caption_text in (
-                ('avg', 'AVG'),
-                ('max', 'MAXIMUM'),
-            ):
-                value_box = QVBoxLayout()
-                value_box.setSpacing(2)
-                value = QLabel('\u2014')
-                value.setObjectName('overviewMetricValue')
-                caption = QLabel(caption_text)
-                caption.setObjectName('overviewMetricLabel')
-                value_box.addWidget(value)
-                value_box.addWidget(caption)
-                values_row.addLayout(value_box, 1)
-                self.metric_values[f'{key}_{statistic}'] = value
-            layout.addLayout(values_row)
-            metrics_grid.addWidget(metric, index // 3, index % 3)
-        metrics_card.layout.addLayout(metrics_grid)
-        self.content_layout.addWidget(metrics_card)
-
-        lower = QHBoxLayout()
-        lower.setSpacing(12)
-        coverage = Card('Data Coverage')
-        self.coverage = QLabel()
-        self.coverage.setObjectName('overviewBody')
-        self.coverage.setWordWrap(True)
-        coverage.layout.addWidget(self.coverage)
-        lower.addWidget(coverage, 1)
-
-        alert_card = Card('Flight Events')
-        event_grid = QGridLayout()
-        event_grid.setSpacing(8)
-        event_grid.setColumnStretch(0, 1)
-        event_grid.setColumnStretch(1, 1)
+        events = Card('Flight Events')
+        events.layout.setContentsMargins(14, 10, 14, 10)
         self.event_values = {}
         self.event_badges = {}
-        event_specs = (
-            ('total', 'TOTAL', 'eventTotal'),
-            ('exceedances', 'EXCEEDANCES', 'eventExceedance'),
-            ('warnings', 'WARNINGS', 'eventWarning'),
-            ('cautions', 'CAUTIONS', 'eventCaution'),
-            ('miscmp', 'MISCMP-P EVENTS', 'eventMiscmp'),
-        )
-        for index, (key, label, object_name) in enumerate(event_specs):
-            badge = QToolButton()
+        self.event_notes = {}
+        event_row = QHBoxLayout()
+        event_row.setSpacing(10)
+        for key, title, object_name in (
+            ('exceedances', 'Exceedances', 'overviewExceedances'),
+            ('miscmp', 'MISCMP-P', 'overviewMiscmp'),
+        ):
+            badge = OverviewEventButton()
             badge.setObjectName(object_name)
-            badge.setText('')
             badge.setCursor(Qt.PointingHandCursor)
-            badge.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            badge.setMinimumHeight(66)
-            badge.setToolTip(f'Open {label.title()} details')
+            policy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            policy.setHeightForWidth(True)
+            badge.setSizePolicy(policy)
+            badge.setMinimumHeight(72)
             badge.clicked.connect(
                 lambda _, event_key=key: self.event_requested.emit(event_key)
             )
-            badge_layout = QVBoxLayout(badge)
-            badge_layout.setContentsMargins(9, 7, 9, 7)
-            badge_layout.setSpacing(1)
-            value = QLabel('0')
-            value.setObjectName('eventValue')
-            caption = QLabel(label)
-            caption.setObjectName('eventLabel')
-            badge_layout.addWidget(value)
-            badge_layout.addWidget(caption)
-            value.setAlignment(Qt.AlignCenter)
-            caption.setAlignment(Qt.AlignCenter)
+            layout = QHBoxLayout(badge)
+            layout.setContentsMargins(12, 8, 12, 8)
+            layout.setSpacing(12)
+            value = QLabel('\u2014')
+            value.setObjectName('overviewEventValue')
+            layout.addWidget(value)
+            description = QVBoxLayout()
+            description.setSpacing(2)
+            caption = QLabel(title)
+            caption.setObjectName('overviewEventTitle')
+            caption.setWordWrap(True)
+            note = QLabel('No event data')
+            note.setObjectName('overviewEventNote')
+            note.setTextFormat(Qt.PlainText)
+            note.setWordWrap(True)
+            description.addWidget(caption)
+            description.addWidget(note)
+            layout.addLayout(description, 1)
+            arrow = QLabel('\u2192')
+            arrow.setObjectName('overviewEventArrow')
+            layout.addWidget(arrow)
+            for label in (value, caption, note, arrow):
+                label.setAttribute(Qt.WA_TransparentForMouseEvents)
             self.event_values[key] = value
             self.event_badges[key] = badge
+            self.event_notes[key] = note
             if key == 'miscmp':
-                event_grid.addWidget(badge, 2, 0, 1, 2)
-            else:
-                event_grid.addWidget(badge, index // 2, index % 2)
-        self.event_badges['miscmp'].setVisible(False)
-        alert_card.layout.addLayout(event_grid)
-        lower.addWidget(alert_card, 1)
-        self.content_layout.addLayout(lower)
+                note.hide()
+                arrow.hide()
+                badge.setFixedSize(160, 54)
+                badge.hide()
+            event_row.addWidget(
+                badge, 1 if key == 'exceedances' else 0, Qt.AlignTop,
+            )
+        events.layout.addLayout(event_row)
+        self.content_layout.addWidget(events)
 
-        route = Card('Route Summary')
-        self.route_summary = QLabel()
-        self.route_summary.setObjectName('overviewBody')
-        self.route_summary.setWordWrap(True)
-        route.layout.addWidget(self.route_summary)
-        self.content_layout.addWidget(route)
+        dashboard = Card('Flight Parameter Dashboard')
+        dashboard.layout.setContentsMargins(14, 12, 14, 12)
+        dashboard.layout.setSpacing(8)
+        self.metric_values = {}
+        self.metric_tiles = {}
+        self.metric_groups = []
+        for group_title, specs in PARAMETER_GROUPS:
+            heading = QLabel(group_title.upper())
+            heading.setObjectName('overviewSectionTitle')
+            dashboard.layout.addWidget(heading)
+            grid = QGridLayout()
+            grid.setSpacing(8)
+            grid.setColumnStretch(0, 1)
+            grid.setColumnStretch(1, 1)
+            tiles = []
+            for index, (key, label, unit, _) in enumerate(specs):
+                tile = self._parameter_tile(key, label, unit)
+                tiles.append(tile)
+                grid.addWidget(tile, index // 2, index % 2)
+            self.metric_groups.append({
+                'grid': grid, 'tiles': tiles, 'columns': 2,
+                'limit': 4 if group_title == 'Temperatures' else 3,
+            })
+            dashboard.layout.addLayout(grid)
+        self.content_layout.addWidget(dashboard)
+
         self.content_layout.addStretch()
+        content.installEventFilter(self)
 
         files_panel = Card('Imported Files')
         files_panel.setObjectName('filesPanel')
-        files_panel.setFixedWidth(370)
+        files_panel.setFixedWidth(285)
+        files_panel.layout.setContentsMargins(12, 12, 12, 12)
         self.file_count = QLabel()
         self.file_count.setObjectName('importedFilesCount')
         files_panel.layout.addWidget(self.file_count)
-        self.files = ImportedFilesList()
+        self.files = ImportedFilesList(show_status=False)
         files_panel.layout.addWidget(self.files, 1)
         root.addWidget(files_panel)
 
-    @staticmethod
-    def _values(items, attribute):
-        return [
-            float(value)
-            for item in items
-            if (value := getattr(item, attribute)) is not None
-        ]
+    def _parameter_tile(self, key, label, unit):
+        metric = OverviewParameterButton(key, label)
+        metric.parameter_selected.connect(self.parameter_requested)
+        layout = QVBoxLayout(metric)
+        layout.setContentsMargins(11, 8, 11, 9)
+        layout.setSpacing(6)
+        heading = QHBoxLayout()
+        heading.setSpacing(6)
+        title = QLabel(label)
+        title.setObjectName('overviewParameterTitle')
+        title.setWordWrap(True)
+        units = QLabel(f'({unit})')
+        units.setObjectName('overviewUnit')
+        heading.addWidget(title, 1)
+        heading.addWidget(units)
+        layout.addLayout(heading)
+        values = QGridLayout()
+        values.setHorizontalSpacing(16)
+        values.setVerticalSpacing(1)
+        for column, statistic in enumerate(('avg', 'max')):
+            caption = QLabel(statistic.upper())
+            caption.setObjectName('overviewMetricLabel')
+            value = QLabel('\u2014')
+            value.setObjectName('overviewMetricValue')
+            value.setTextFormat(Qt.PlainText)
+            values.addWidget(caption, 0, column)
+            values.addWidget(value, 1, column)
+            values.setColumnStretch(column, 1)
+            self.metric_values[f'{key}_{statistic}'] = value
+        layout.addLayout(values)
+        for child in metric.findChildren(QLabel):
+            child.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.metric_tiles[key] = metric
+        return metric
 
-    @staticmethod
-    def _display(values, unit, average=False, decimals=1):
-        if not values:
-            return '\u2014'
-        value = mean(values) if average else max(values)
-        return f'{value:.{decimals}f} {unit}'
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Resize:
+            available = max(0, event.size().width() - 34)
+            columns = 4 if available >= 740 else (
+                3 if available >= 560 else (2 if available >= 340 else 1)
+            )
+            for group in self.metric_groups:
+                count = min(columns, group['limit'])
+                if group['limit'] == 4 and count == 3:
+                    count = 2
+                if count == group['columns']:
+                    continue
+                grid = group['grid']
+                for tile in group['tiles']:
+                    grid.removeWidget(tile)
+                for column in range(group['limit']):
+                    grid.setColumnStretch(column, 1 if column < count else 0)
+                for index, tile in enumerate(group['tiles']):
+                    grid.addWidget(tile, index // count, index % count)
+                group['columns'] = count
+        return super().eventFilter(watched, event)
 
     def load(self, flight):
-        engine = flight.engine_data
-        gps = flight.data_log
-        alerts = flight.alerts
-
-        self.summary_values['date'].setText(flight.flight_date or '\u2014')
-        self.summary_values['departure'].setText(
-            flight.departure_time or '\u2014'
-        )
-        self.summary_values['arrival'].setText(
-            flight.arrival_time or '\u2014'
-        )
-        self.summary_values['duration'].setText(flight.duration or '\u2014')
-        self.summary_values['origin'].setText(format_airport(flight.origin))
-        self.summary_values['destination'].setText(
-            format_airport(flight.destination)
-        )
-
-        itt = self._values(engine, 'itt')
-        torque = self._values(engine, 'tq')
-        eng_temp = self._values(engine, 'eng_ot')
-        xmsn_temp = self._values(engine, 'xmsn_ot')
-        altitude = self._values(gps, 'alt_ind')
-        ias = self._values(gps, 'ias')
-        metric_text = {}
-        for key, values, unit, decimals in (
-            ('itt', itt, '\u00b0C', 1),
-            ('torque', torque, '%', 1),
-            ('ias', ias, 'kt', 1),
-            ('eng_temp', eng_temp, '\u00b0C', 1),
-            ('xmsn_temp', xmsn_temp, '\u00b0C', 1),
-            ('altitude', altitude, 'ft', 0),
+        for key, text in (
+            ('date', flight.flight_date), ('departure', flight.departure_time),
+            ('arrival', flight.arrival_time), ('duration', flight.duration),
+            ('origin', format_airport(flight.origin)),
+            ('destination', format_airport(flight.destination)),
         ):
-            metric_text[f'{key}_avg'] = self._display(
-                values, unit, average=True, decimals=decimals
-            )
-            metric_text[f'{key}_max'] = self._display(
-                values, unit, decimals=decimals
-            )
-        if not ias:
-            metric_text['ias_avg'] = 'NO DATA'
-            metric_text['ias_max'] = 'NO DATA'
-        for key, value in metric_text.items():
-            self.metric_values[key].setText(value)
+            self.summary_values[key].setText(text or '\u2014')
 
-        first_time = (
-            engine[0].timestamp if engine else
-            (gps[0].timestamp if gps else None)
-        )
-        last_time = (
-            engine[-1].timestamp if engine else
-            (gps[-1].timestamp if gps else None)
-        )
-        self.coverage.setText(
-            f'<b>{len(engine):,}</b> engine samples<br>'
-            f'<b>{len(gps):,}</b> GPS points<br>'
-            f'Recording window: <b>{first_time or "\u2014"}</b> to '
-            f'<b>{last_time or "\u2014"}</b>'
-        )
+        statistics = flight_parameter_statistics(flight)
+        for _, specs in PARAMETER_GROUPS:
+            for key, label, unit, decimals in specs:
+                summary = statistics[key]
+                tooltip = f'Open {label} in Telemetry.\n' + (
+                    f'{summary.samples:,} valid recorded samples. '
+                    'AVG is the arithmetic mean; MAX is the highest recorded value.'
+                    if summary.samples else 'No recorded values for this parameter.'
+                )
+                self.metric_tiles[key].setToolTip(tooltip)
+                for name, number in (
+                    ('avg', summary.average), ('max', summary.maximum),
+                ):
+                    value = self.metric_values[f'{key}_{name}']
+                    value.setText(
+                        '\u2014' if number is None else f'{number:,.{decimals}f}'
+                    )
+                    value.setAccessibleName(f'{label} {name.upper()} ({unit})')
+                    value.setToolTip(tooltip)
 
-        exceedances = sum(alert.kind == 'EXCEEDANCE' for alert in alerts)
-        warnings = sum(alert.level == 'WARNING' for alert in alerts)
-        cautions = sum(alert.level == 'CAUTION' for alert in alerts)
-        miscmp = sum(
-            (alert.alert_name or '').upper() == 'MISCMP-P'
-            and alert.level == 'CAUTION'
-            and (alert.alert_state or '').upper() == 'SET'
-            for alert in alerts
-        )
-        event_counts = {
-            'total': len(alerts),
-            'exceedances': exceedances,
-            'warnings': warnings,
-            'cautions': cautions,
-            'miscmp': miscmp,
-        }
-        for key, count in event_counts.items():
-            self.event_values[key].setText(str(count))
-        self.event_badges['miscmp'].setVisible(miscmp > 0)
-
-        valid_gps = [
-            point for point in gps
-            if point.latitude is not None and point.longitude is not None
-            and 35 <= point.latitude <= 45 and -11 <= point.longitude <= 5
-        ]
-        if valid_gps:
-            start, end = valid_gps[0], valid_gps[-1]
-            self.route_summary.setText(
-                f'<b>{len(valid_gps):,}</b> valid route points  \u00b7  '
-                f'Start: <b>{start.latitude:.5f}, {start.longitude:.5f}</b>  '
-                f'\u00b7  End: <b>{end.latitude:.5f}, {end.longitude:.5f}</b>'
+        for key, summary in important_flight_events(flight).items():
+            badge = self.event_badges[key]
+            self.event_values[key].setText(
+                str(summary.count) if summary.available else '\u2014'
             )
-        else:
-            self.route_summary.setText('No valid GPS route is available.')
+            if key == 'exceedances':
+                names = ' \u00b7 '.join(
+                    f'{name} ({count})' if count > 1 else name
+                    for name, count in summary.activated_names
+                )
+                self.event_notes[key].setText(
+                    names or (
+                        'No exceedances recorded'
+                        if summary.available else 'No exceedance data'
+                    )
+                )
+            else:
+                badge.setVisible(summary.count > 0)
+            badge.setProperty('eventActive', summary.count > 0)
+            badge.setEnabled(summary.available)
+            title = 'Exceedances' if key == 'exceedances' else 'MISCMP-P'
+            badge.setAccessibleName(
+                f'{title}: {summary.count} SET activations'
+                if summary.available else f'{title}: no event data'
+            )
+            badge.setToolTip(
+                f'Open {title} event history. Counts include SET activations only.'
+                if summary.available else f'No {title} event source was imported.'
+            )
+            for widget in (badge, *badge.findChildren(QLabel)):
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+                widget.update()
+            badge.updateGeometry()
+
+        route = flight_route_availability(flight)
+        self.view_route_button.setText(
+            'View Route' if route.available else 'Route Unavailable'
+        )
+        self.view_route_button.setEnabled(route.available)
+        self.view_route_button.setToolTip(
+            'Open the recorded flight on map'
+            if route.available else route.reason
+        )
 
         imported = set(flight.imported_files)
         self.file_count.setText(

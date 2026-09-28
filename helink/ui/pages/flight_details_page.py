@@ -24,9 +24,13 @@ class FlightDetailsPage(QWidget):
         self.tabs=QTabWidget(); root.addWidget(self.tabs)
         self.overview=OverviewTab(); self.overview.import_requested.connect(lambda t:self.import_requested.emit(self.fid,t)); self.overview.event_requested.connect(self.open_event_summary); self.tabs.addTab(self.overview,'Overview')
         self.telemetry=TelemetryTab(); self.tabs.addTab(self.telemetry,'Telemetry')
+        self.overview.parameter_requested.connect(self.open_parameter_chart)
         self.cas=AlertsTab('CAS'); self.tabs.addTab(self.cas,'CAS')
         self.exceed=AlertsTab('EXCEEDANCE'); self.tabs.addTab(self.exceed,'Exceedances')
         self.route=MapTab(); self.tabs.addTab(self.route,'Flight Route')
+        self.overview.route_requested.connect(
+            lambda: self.tabs.setCurrentWidget(self.route)
+        )
         rep=QWidget(); rl=QVBoxLayout(rep); self.report=QTextEdit(); self.report.setReadOnly(True); gen=QPushButton('Generate Maintenance Report'); gen.clicked.connect(self.make_report); rl.addWidget(gen); rl.addWidget(self.report); self.tabs.addTab(rep,'Maintenance Report')
 
     def load(self,fid):
@@ -47,6 +51,10 @@ class FlightDetailsPage(QWidget):
         )
         self.overview.load(f); self.telemetry.load(f); self.exceed.load(f); self.cas.load(f); self.route.load(f); text=f.predictive_report or 'No maintenance report has been generated for this flight yet.'; self.report.setPlainText(text)
 
+    def open_parameter_chart(self, parameter_key):
+        if self.telemetry.focus_parameter(parameter_key):
+            self.tabs.setCurrentWidget(self.telemetry)
+
     def open_event_summary(self, event_key):
         if event_key == 'exceedances':
             self.exceed.set_filters()
@@ -55,7 +63,7 @@ class FlightDetailsPage(QWidget):
         level = {
             'warnings': 'WARNING',
             'cautions': 'CAUTION',
-            'miscmp': 'CAUTION',
+            'miscmp': 'All',
         }.get(event_key, 'All')
         alert_name = 'MISCMP-P' if event_key == 'miscmp' else 'All Alerts'
         self.cas.set_filters(level, alert_name)

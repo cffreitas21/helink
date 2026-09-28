@@ -10,11 +10,11 @@ class FleetParameterCard(QFrame):
     def __init__(self, title, average, maximum, unit, parent=None):
         super().__init__(parent)
         self.setObjectName('fleetParameterCard')
-        self.setFixedSize(181, 86)
+        self.setFixedSize(181, 68)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(5, 8, 5, 9)
-        root.setSpacing(5)
+        root.setContentsMargins(5, 5, 5, 5)
+        root.setSpacing(3)
 
         heading = QHBoxLayout()
         heading.setSpacing(2)

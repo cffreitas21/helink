@@ -115,14 +115,27 @@ class AlertsTab(QWidget):
             self.table.setRowHeight(row, required_height)
 
     def set_filters(self, level='All', alert_name='All Alerts'):
-        self.level.setCurrentText(
-            level if self.level.findText(level) >= 0 else 'All'
-        )
-        self.alert_filter.setCurrentText(
-            alert_name
-            if self.alert_filter.findText(alert_name) >= 0
-            else 'All Alerts'
-        )
+        # Overview navigation must not retain a previous search or level filter.
+        controls = (self.search, self.level, self.alert_filter)
+        previous = [control.blockSignals(True) for control in controls]
+        try:
+            self.search.clear()
+            self.level.setCurrentText(
+                level if self.level.findText(level) >= 0 else 'All'
+            )
+            index = next((
+                index for index in range(self.alert_filter.count())
+                if self.alert_filter.itemText(index).strip().casefold()
+                == alert_name.strip().casefold()
+            ), -1)
+            if index < 0:
+                # Keep the requested scope even if it currently has zero events.
+                self.alert_filter.addItem(alert_name)
+                index = self.alert_filter.count() - 1
+            self.alert_filter.setCurrentIndex(index)
+        finally:
+            for control, blocked in zip(controls, previous):
+                control.blockSignals(blocked)
         self.apply()
 
     @staticmethod
