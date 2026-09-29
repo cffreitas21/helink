@@ -190,9 +190,8 @@ class FlightRepository:
                 flight_id = self._save_flight(flight, report, message)
                 saved_ids.append(flight_id)
                 report(1, message)
-
-        if progress:
-            progress(total, total, 'Finalizing flight records...')
+            if progress:
+                progress(total, total, 'Finalizing flight records...')
         return saved_ids
 
     def _save_flight(self, flight, report, message):

@@ -15,6 +15,10 @@ CREATE INDEX IF NOT EXISTS idx_flights_aircraft_date ON flights(aircraft_id,flig
 CREATE INDEX IF NOT EXISTS idx_engine_data_flight ON engine_data(flight_id);
 CREATE INDEX IF NOT EXISTS idx_gps_data_flight ON gps_data(flight_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_flight_kind ON alerts(flight_id,kind);
+CREATE INDEX IF NOT EXISTS idx_engine_data_flight_seq ON engine_data(flight_id,seq);
+CREATE INDEX IF NOT EXISTS idx_gps_data_flight_seq ON gps_data(flight_id,seq);
+CREATE INDEX IF NOT EXISTS idx_flights_aircraft_schedule ON flights(aircraft_id,flight_date,departure_time,id);
+CREATE INDEX IF NOT EXISTS idx_alerts_flight_timestamp ON alerts(flight_id,timestamp);
 """
 
 class DatabaseManager:
@@ -212,5 +216,10 @@ class DatabaseManager:
                 except Exception:pass
                 shutil.copy2(backup,self.path);self.connection=sqlite3.connect(self.path);self.connection.row_factory=sqlite3.Row;self._configure_connection()
             raise
+
+    def reopen(self):
+        self.connection = sqlite3.connect(self.path)
+        self.connection.row_factory = sqlite3.Row
+        self._configure_connection()
 
     def close(self):self.connection.close()

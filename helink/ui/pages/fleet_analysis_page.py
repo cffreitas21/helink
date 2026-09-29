@@ -38,6 +38,7 @@ class FleetAnalysisPage(QWidget):
 
     back_requested = Signal()
     flights_requested = Signal(str)
+    loading_changed = Signal(bool, str)
 
     def __init__(self, aircraft_controller):
         super().__init__()
@@ -50,6 +51,10 @@ class FleetAnalysisPage(QWidget):
         self._fixed_aircraft_id = None
         self._row_by_aircraft = {}
         self._day_flight_cache = {}
+        self._query_token = 0
+        self._query_task = None
+        self._day_token = 0
+        self._day_task = None
         page_layout = QVBoxLayout(self)
         page_layout.setContentsMargins(0, 0, 0, 0)
         self.scroll = QScrollArea()
@@ -163,10 +168,15 @@ class FleetAnalysisPage(QWidget):
             return True
         return super().eventFilter(watched, event)
 
-    def load(self, aircraft_id=None, *, allow_comparison=True):
+    def load(self, aircraft_id=None, *, allow_comparison=True, prepared=None):
         if not allow_comparison and not aircraft_id:
             raise ValueError('An aircraft is required for individual analysis.')
         self._loading = True
+        self._query_token += 1
+        self._day_token += 1
+        for task in (self._query_task, self._day_task):
+            if task is not None:
+                task.cancel()
         try:
             self._allow_comparison = allow_comparison
             self._fixed_aircraft_id = aircraft_id if not allow_comparison else None
@@ -181,7 +191,9 @@ class FleetAnalysisPage(QWidget):
             self.aircraft_selector.hidePopup()
             self.aircraft_selector.setVisible(allow_comparison)
             self.aircraft_selector.setEnabled(allow_comparison)
-            if allow_comparison:
+            if prepared is not None:
+                self.aircraft = prepared[0]
+            elif allow_comparison:
                 self.aircraft = self.aircraft_controller.list_for_analysis()
             else:
                 aircraft = self.aircraft_controller.get(aircraft_id)
@@ -198,7 +210,7 @@ class FleetAnalysisPage(QWidget):
             self.aircraft_selector.set_aircraft(self.aircraft, selected, self.colors)
         finally:
             self._loading = False
-        self._reload()
+        self._reload(preloaded_days=prepared[1] if prepared is not None else None)
         self.scroll.verticalScrollBar().setValue(0)
 
     def _selected_aircraft_ids(self):
@@ -211,6 +223,13 @@ class FleetAnalysisPage(QWidget):
             )
         return self.aircraft_selector.selected_ids()
 
+    def cancel_pending(self):
+        self._query_token += 1
+        self._day_token += 1
+        for task in (self._query_task, self._day_task):
+            if task is not None:
+                task.cancel()
+
     def _selected_aircraft(self):
         selected = set(self._selected_aircraft_ids())
         return [item for item in self.aircraft if item.id in selected]
@@ -220,11 +239,46 @@ class FleetAnalysisPage(QWidget):
             item for item in PARAMETERS if item[0] == self.parameter.currentData()
         )
 
-    def _reload(self, *_):
+    def _reload(self, *_, preloaded_days=None):
         if self._loading:
             return
         self._day_flight_cache.clear()
+        self._day_token += 1
+        if self._day_task is not None:
+            self._day_task.cancel()
         start, end = self.date_filter.date_range
+        if preloaded_days is not None:
+            self.days = preloaded_days
+            self.date_filter.set_available_dates(day.flight_date for day in self.days)
+            self._render()
+            return
+        if self.aircraft_controller.tasks is not None:
+            self._query_token += 1
+            token = self._query_token
+            if self._query_task is not None:
+                self._query_task.cancel()
+            self.loading_changed.emit(True, 'Loading parameter trends...')
+
+            def received(days):
+                if token != self._query_token:
+                    return
+                self.days = days
+                if start is None:
+                    self.date_filter.set_available_dates(day.flight_date for day in days)
+                self._render()
+                self.loading_changed.emit(False, '')
+
+            def failed(error):
+                if token == self._query_token:
+                    self.loading_changed.emit(False, '')
+                    QMessageBox.warning(self, self.title.text(), str(error))
+
+            self._query_task = self.aircraft_controller.request(
+                'daily_parameter_trends', self._selected_aircraft_ids(),
+                self.parameter.currentData(), start_date=start, end_date=end,
+                on_result=received, on_error=failed,
+            )
+            return
         try:
             self.days = self.aircraft_controller.daily_parameter_trends(
                 self._selected_aircraft_ids(),
@@ -311,6 +365,28 @@ class FleetAnalysisPage(QWidget):
             return
         parameter, label, unit, _color = self._parameter_metadata()
         cache_key = (day.aircraft_id, day.flight_date, parameter)
+        if self.aircraft_controller.tasks is not None and cache_key not in self._day_flight_cache:
+            self._day_token += 1
+            token = self._day_token
+            if self._day_task is not None:
+                self._day_task.cancel()
+            self.day_details.show_message('Loading flight statistics...')
+
+            def received(flights):
+                if token == self._day_token:
+                    self._day_flight_cache[cache_key] = flights
+                    self._show_day(day)
+
+            def failed(error):
+                if token == self._day_token:
+                    self.day_details.show_message('The flight statistics could not be loaded.')
+                    QMessageBox.warning(self, self.title.text(), str(error))
+
+            self._day_task = self.aircraft_controller.request(
+                'parameter_flights_for_day', day.aircraft_id, day.flight_date, parameter,
+                on_result=received, on_error=failed,
+            )
+            return
         try:
             if cache_key not in self._day_flight_cache:
                 self._day_flight_cache[cache_key] = (

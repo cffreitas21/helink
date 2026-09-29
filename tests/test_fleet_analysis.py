@@ -763,6 +763,9 @@ class FleetAnalysisNavigationTests(TrendFixture, unittest.TestCase):
             def __init__(self, *_controllers):
                 super().__init__()
 
+            def cancel_pending(self):
+                pass
+
         navigation = NavigationController()
         with patch('helink.ui.main_window.FlightDetailsPage', FlightDetailsStub):
             window = MainWindow(

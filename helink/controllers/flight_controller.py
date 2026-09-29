@@ -2,13 +2,36 @@ from __future__ import annotations
 from datetime import date
 
 from helink.repositories import FlightRepository
+from helink.repositories.aircraft_repository import AircraftRepository
+from helink.services.flight_details_service import prepare_flight_details
 
 
 class FlightController:
     """Coordinates flight queries and lifecycle operations."""
 
-    def __init__(self, repository: FlightRepository):
+    def __init__(self, repository: FlightRepository, tasks=None):
         self.repository = repository
+        self.tasks = tasks
+
+    def request(self, method, *args, on_result, on_error, **kwargs):
+        return self.tasks.query(
+            lambda database, _progress: getattr(
+                FlightController(FlightRepository(database)), method,
+            )(*args, **kwargs),
+            on_result, on_error,
+            cache_key=('flight', method, args, kwargs),
+        )
+
+    def details_data(self, flight_id):
+        flight = self.get(flight_id)
+        if flight is None:
+            raise ValueError('The selected flight is no longer available.')
+        aircraft = AircraftRepository(self.repository.database).find_by_id(flight.aircraft_id)
+        return prepare_flight_details(flight, aircraft)
+
+    def list_page_data(self, aircraft_id, **kwargs):
+        aircraft = AircraftRepository(self.repository.database).find_by_id(aircraft_id)
+        return aircraft, self.list_flights(aircraft_id, **kwargs)
 
     def list_flights(
         self, aircraft_id=None, *, start_date=None, end_date=None, descending=True,

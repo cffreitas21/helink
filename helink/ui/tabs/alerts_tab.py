@@ -17,6 +17,16 @@ class AlertsTab(QWidget):
         super().__init__()
         self.kind = kind
         self.all = []
+        self.tasks = None
+        self._render_token = 0
+        self._render_pending = False
+        self._render_timer = QTimer(self)
+        self._render_timer.setSingleShot(True)
+        self._render_timer.timeout.connect(self._render_next_batch)
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(80)
+        self._search_timer.timeout.connect(self.apply)
         root = QVBoxLayout(self)
         filters = QHBoxLayout()
         self.search = QLineEdit()
@@ -67,9 +77,23 @@ class AlertsTab(QWidget):
             QHeaderView.Interactive
         )
         root.addWidget(self.table, 1)
-        self.search.textChanged.connect(self.apply)
+        self.search.textChanged.connect(self._search_changed)
         self.alert_filter.currentTextChanged.connect(self.apply)
         self.level.currentTextChanged.connect(self.apply)
+
+    def _search_changed(self, *_):
+        if self.tasks is None:
+            self.apply()
+        else:
+            self._search_timer.start()
+
+    def cancel_pending(self):
+        self._search_timer.stop()
+        self._render_timer.stop()
+        self._render_token += 1
+        was_pending = self._render_pending
+        self._render_pending = False
+        return was_pending
 
     def _schedule_row_resize(self, *_):
         QTimer.singleShot(0, self._fit_table_to_contents)
@@ -172,6 +196,7 @@ class AlertsTab(QWidget):
         self.apply()
 
     def apply(self):
+        self.cancel_pending()
         query = self.search.text().lower()
         selected_alert = self.alert_filter.currentText()
         level = self.level.currentText()
@@ -197,8 +222,34 @@ class AlertsTab(QWidget):
             f'{"TYPE" if type_count == 1 else "TYPES"}   \u00b7   '
             f'{trigger_count} VALID TRIGGERS'
         )
+        self.table.clearContents()
         self.table.setRowCount(len(rows))
+        if self.tasks is not None and len(rows) > 80:
+            self._render_rows = rows
+            self._render_offset = 0
+            self._render_pending = True
+            self._render_next_batch()
+        else:
+            self._populate_rows(rows)
+            self._finish_render()
+
+    def _render_next_batch(self):
+        if not self._render_pending:
+            return
+        end = min(len(self._render_rows), self._render_offset + 24)
+        self._populate_rows(
+            self._render_rows[self._render_offset:end], start=self._render_offset,
+        )
+        self._render_offset = end
+        if end < len(self._render_rows):
+            self._render_timer.start(0)
+        else:
+            self._render_pending = False
+            self._finish_render()
+
+    def _populate_rows(self, rows, *, start=0):
         for row, alert in enumerate(rows):
+            row += start
             values = [
                 (0, self._display_time(alert.timestamp)),
                 (2, alert.level),
@@ -219,8 +270,8 @@ class AlertsTab(QWidget):
             self.table.setCellWidget(
                 row, self.trigger_column, self._triggers_button(alert)
             )
+    def _finish_render(self):
         self._fit_table_to_contents()
-        QTimer.singleShot(0, self._fit_table_to_contents)
         self.table.scrollToTop()
 
     @staticmethod

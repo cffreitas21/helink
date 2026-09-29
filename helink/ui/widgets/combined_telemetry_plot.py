@@ -1,5 +1,6 @@
 from math import isfinite
 
+from matplotlib.backend_bases import MouseEvent
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 from helink.ui.widgets.plot import Plot
@@ -13,8 +14,16 @@ class CombinedTelemetryPlot(Plot):
         self.unit_axes = {}
         self.parameter_lines = {}
         self.legend = None
+        self._full_xlim = (0, 1)
+        self._full_ylims = {}
+        self.mpl_connect('scroll_event', self._scroll_zoom)
 
-    def parameters(self, series, time_labels=(), cursor=0):
+    def parameters(self, series, time_labels=(), cursor=0, *, render=True, preserve_view=False):
+        previous_x = self.ax.get_xlim() if preserve_view and self._point_count else None
+        previous_y = (
+            {unit: axis.get_ylim() for unit, axis in self.unit_axes.items()}
+            if previous_x is not None else {}
+        )
         self._cursor_line = None
         self._cursor_background = None
         self._selection_artists = []
@@ -91,4 +100,104 @@ class CombinedTelemetryPlot(Plot):
         self._cursor_line = self.ax.axvline(
             cursor, color='#475569', linestyle='--', linewidth=1.2, animated=True,
         )
-        self.draw()
+        self._full_xlim = self.ax.get_xlim()
+        self._full_ylims = {unit: axis.get_ylim() for unit, axis in self.unit_axes.items()}
+        for axis in self._selection_axes:
+            axis.callbacks.connect('xlim_changed', self._invalidate_cursor)
+            axis.callbacks.connect('ylim_changed', self._invalidate_cursor)
+        toolbar = getattr(self, 'toolbar', None)
+        if toolbar is not None:
+            toolbar.update()
+        if previous_x is not None:
+            self.ax.set_xlim(previous_x)
+            for unit, axis in self.unit_axes.items():
+                if unit in previous_y:
+                    axis.set_ylim(previous_y[unit])
+            self.limit_view()
+        if render:
+            self.draw()
+        else:
+            self.draw_idle()
+
+    @staticmethod
+    def _bounded_interval(limits, bounds, minimum):
+        left, right = sorted(limits)
+        lower, upper = bounds
+        if not all(isfinite(value) for value in (left, right)):
+            return bounds
+        width = min(upper - lower, max(minimum, right - left))
+        center = (left + right) / 2
+        start = min(upper - width, max(lower, center - width / 2))
+        return start, start + width
+
+    def limit_view(self):
+        """Keep navigation inside the flight and the original physical scales."""
+        self.ax.set_xlim(self._bounded_interval(self.ax.get_xlim(), self._full_xlim, 1))
+        for unit, axis in self.unit_axes.items():
+            bounds = self._full_ylims[unit]
+            axis.set_ylim(self._bounded_interval(
+                axis.get_ylim(), bounds, (bounds[1] - bounds[0]) * 1e-6,
+            ))
+        self._invalidate_cursor()
+        self.draw_idle()
+
+    def reset_view(self):
+        self.ax.set_xlim(self._full_xlim)
+        for unit, axis in self.unit_axes.items():
+            axis.set_ylim(self._full_ylims[unit])
+        self._invalidate_cursor()
+        self.draw_idle()
+
+    def zoom_view(self, factor, *, x_fraction=None, y_fraction=0.5):
+        if self._point_count < 2 or not isfinite(factor) or factor <= 0:
+            return
+        left, right = self.ax.get_xlim()
+        if x_fraction is None:
+            selected = self._cursor_line.get_xdata()[0]
+            x_fraction = (selected - left) / (right - left) if left <= selected <= right else 0.5
+        x_fraction = min(1, max(0, x_fraction))
+        y_fraction = min(1, max(0, y_fraction))
+        anchor = left + (right - left) * x_fraction
+        width = (right - left) * factor
+        self.ax.set_xlim(anchor - width * x_fraction, anchor + width * (1 - x_fraction))
+        for axis in self.unit_axes.values():
+            bottom, top = axis.get_ylim()
+            anchor = bottom + (top - bottom) * y_fraction
+            height = (top - bottom) * factor
+            axis.set_ylim(anchor - height * y_fraction, anchor + height * (1 - y_fraction))
+        self.limit_view()
+
+    def _scroll_zoom(self, event):
+        if not event.step or event.inaxes not in self._selection_axes:
+            return
+        box = self.ax.bbox
+        self.zoom_view(
+            1.25 ** (-max(-4, min(4, event.step))),
+            x_fraction=(event.x - box.x0) / box.width,
+            y_fraction=(event.y - box.y0) / box.height,
+        )
+
+    def wheelEvent(self, event):
+        x, y = self.mouseEventCoords(event)
+        if self._point_count > 1 and self.ax.bbox.contains(x, y):
+            steps = event.angleDelta().y() / 120 or event.pixelDelta().y() / 120
+            if steps:
+                mouse = MouseEvent('scroll_event', self, x, y, step=steps, guiEvent=event)
+                self.callbacks.process('scroll_event', mouse)
+                event.accept()
+                return
+        super().wheelEvent(event)
+
+    def _select_point(self, event):
+        toolbar = getattr(self, 'toolbar', None)
+        if toolbar is None or not toolbar.mode:
+            super()._select_point(event)
+
+    def move_cursor(self, index):
+        left, right = self.ax.get_xlim()
+        if self._point_count and not left <= index <= right:
+            width = right - left
+            self.ax.set_xlim(self._bounded_interval(
+                (index - width / 2, index + width / 2), self._full_xlim, 1,
+            ))
+        super().move_cursor(index)

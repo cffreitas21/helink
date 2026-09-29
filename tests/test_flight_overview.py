@@ -476,7 +476,9 @@ class OverviewWidgetTests(unittest.TestCase):
         cas.search.setText('unrelated previous search')
         cas.level.setCurrentText('WARNING')
         tabs = Mock()
-        page = SimpleNamespace(cas=cas, exceed=Mock(), tabs=tabs)
+        page = SimpleNamespace(
+            cas=cas, exceed=Mock(), tabs=tabs, _ensure_tab_loaded=Mock(),
+        )
         FlightDetailsPage.open_event_summary(page, 'miscmp')
         self.assertEqual(cas.search.text(), '')
         self.assertEqual(cas.level.currentText(), 'All')
@@ -504,6 +506,213 @@ class OverviewWidgetTests(unittest.TestCase):
         cas.set_filters('All', 'MISCMP-P')
         self.assertEqual(cas.table.rowCount(), 1)
         self.assertEqual(cas.alert_filter.currentText(), ' miscmp-p ')
+
+
+class FlightDetailsLoadingTests(unittest.TestCase):
+    """Lazy tab preparation with real widgets and synthetic flight snapshots."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+        font = Path('C:/Windows/Fonts/segoeui.ttf')
+        if os.name == 'nt' and font.exists():
+            QFontDatabase.addApplicationFont(str(font))
+        cls.app.setStyleSheet(STYLE)
+
+    def setUp(self):
+        self.flight = sample_flight()
+        self.flights = Mock()
+        self.flights.get.return_value = self.flight
+        self.aircraft = Mock()
+        self.aircraft.get.return_value = SimpleNamespace(
+            registration='TEST-A', model='Bell 505', serial_number='001',
+        )
+        self.route = QWidget()
+        self.route.load = Mock()
+        with patch('helink.ui.pages.flight_details_page.MapTab', return_value=self.route):
+            self.page = FlightDetailsPage(self.aircraft, self.flights, Mock())
+        self.addCleanup(self.page.deleteLater)
+        self.addCleanup(self.page.close)
+        for tab in (
+            self.page.overview, self.page.telemetry, self.page.cas, self.page.exceed,
+        ):
+            spy = patch.object(tab, 'load', wraps=tab.load)
+            spy.start()
+            self.addCleanup(spy.stop)
+        self.page.resize(1280, 1000)
+
+    def test_initial_open_prepares_only_overview_and_fetches_one_aircraft(self):
+        self.page.load(self.flight.id)
+        self.flights.get.assert_called_once_with(self.flight.id)
+        self.aircraft.get.assert_called_once_with(self.flight.aircraft_id)
+        self.aircraft.list_aircraft.assert_not_called()
+        self.page.overview.load.assert_called_once_with(self.flight)
+        for tab in (self.page.telemetry, self.page.cas, self.page.exceed, self.route):
+            tab.load.assert_not_called()
+        self.assertEqual(self.page._loaded_tabs, {self.page.overview})
+        self.assertEqual(self.page.overview.metric_values['itt_avg'].text(), '670.0')
+        self.assertIn('TEST-A', self.page.title.text())
+        self.assertIn('11:00:00', self.page.title.text())
+        self.assertIn('11:10:00', self.page.title.text())
+        self.assertEqual(self.page.info.text(), 'Bell 505 \N{MIDDLE DOT} SN 001')
+        self.assertEqual(self.page.report.toPlainText(), '')
+
+    def test_each_tab_is_prepared_once_per_visit_without_reloading_flight_data(self):
+        self.page.load(self.flight.id)
+        for tab in (self.page.telemetry, self.page.cas, self.page.exceed, self.route):
+            with self.subTest(tab=type(tab).__name__):
+                self.page.tabs.setCurrentWidget(tab)
+                tab.load.assert_called_once_with(self.flight)
+                self.page.tabs.setCurrentWidget(self.page.overview)
+                self.page.tabs.setCurrentWidget(tab)
+                tab.load.assert_called_once_with(self.flight)
+        self.page.overview.load.assert_called_once_with(self.flight)
+        self.flights.get.assert_called_once_with(self.flight.id)
+        self.aircraft.get.assert_called_once_with(self.flight.aircraft_id)
+
+    def test_cold_parameter_shortcut_loads_telemetry_before_focusing_its_chart(self):
+        self.page.load(self.flight.id)
+        self.page.overview.metric_tiles['itt'].click()
+        self.page.telemetry.load.assert_called_once_with(self.flight)
+        self.assertIs(self.page.tabs.currentWidget(), self.page.telemetry)
+        self.assertTrue(self.page.telemetry.combine_charts_button.isChecked())
+        self.assertEqual(self.page.telemetry.chart_filter.selected_keys(), ('itt',))
+        line = self.page.telemetry.combined_plot.parameter_lines['ITT']
+        self.assertEqual(list(line.get_ydata()), [640, 700])
+        self.page.telemetry.slider.setValue(1)
+        self.assertEqual(self.page.telemetry.time.text(), '11:10:00')
+        for tab in (self.page.cas, self.page.exceed, self.route):
+            tab.load.assert_not_called()
+
+    def test_cold_event_shortcuts_load_alerts_before_setting_their_filters(self):
+        self.page.load(self.flight.id)
+        self.page.overview.event_badges['miscmp'].click()
+        self.page.cas.load.assert_called_once_with(self.flight)
+        self.assertIs(self.page.tabs.currentWidget(), self.page.cas)
+        self.assertEqual(self.page.cas.alert_filter.currentText(), 'MISCMP-P')
+        self.assertEqual(self.page.cas.table.rowCount(), 2)
+        self.page.cas.search.setText('unrelated stale search')
+        self.page.cas.level.setCurrentText('WARNING')
+        self.page.tabs.setCurrentWidget(self.page.overview)
+        self.page.overview.event_badges['miscmp'].click()
+        self.page.cas.load.assert_called_once_with(self.flight)
+        self.assertEqual(self.page.cas.search.text(), '')
+        self.assertEqual(self.page.cas.level.currentText(), 'All')
+        self.assertEqual(self.page.cas.table.rowCount(), 2)
+        self.page.open_event_summary('exceedances')
+        self.page.exceed.load.assert_called_once_with(self.flight)
+        self.assertIs(self.page.tabs.currentWidget(), self.page.exceed)
+        self.assertEqual(self.page.exceed.table.rowCount(), 2)
+        self.page.telemetry.load.assert_not_called()
+        self.route.load.assert_not_called()
+
+    def test_route_is_prepared_only_on_its_first_open(self):
+        with patch(
+            'helink.services.flight_route_service.offline_map_assets_available',
+            return_value=True,
+        ):
+            self.page.load(self.flight.id)
+        self.route.load.assert_not_called()
+        self.page.overview.view_route_button.click()
+        self.assertIs(self.page.tabs.currentWidget(), self.route)
+        self.route.load.assert_called_once_with(self.flight)
+        self.page.tabs.setCurrentWidget(self.page.overview)
+        self.page.overview.view_route_button.click()
+        self.route.load.assert_called_once_with(self.flight)
+
+    def test_opening_another_flight_invalidates_all_prepared_tabs(self):
+        self.page.load(self.flight.id)
+        for tab in (self.page.telemetry, self.page.cas, self.page.exceed, self.route):
+            self.page.tabs.setCurrentWidget(tab)
+        self.page.tabs.setCurrentWidget(self.page.overview)
+        changed = replace(
+            self.flight, id='second-flight', data_log=(), alerts=(),
+            engine_data=(replace(self.flight.engine_data[0], itt=900),),
+        )
+        self.flights.get.return_value = changed
+        self.page.load(changed.id)
+        self.assertEqual(self.page._loaded_tabs, {self.page.overview})
+        self.assertEqual(self.page.overview.metric_values['itt_avg'].text(), '900.0')
+        for tab in (self.page.telemetry, self.page.cas, self.page.exceed, self.route):
+            with self.subTest(tab=type(tab).__name__):
+                self.assertEqual(tab.load.call_count, 1)
+                self.page.tabs.setCurrentWidget(tab)
+                self.assertEqual(tab.load.call_count, 2)
+                tab.load.assert_called_with(changed)
+        self.assertEqual(len(self.page.telemetry.data), 1)
+        self.assertEqual(self.page.telemetry.data[0].itt, 900)
+        self.assertEqual(self.page.cas.table.rowCount(), 0)
+        self.assertEqual(self.page.exceed.table.rowCount(), 0)
+        self.assertEqual(self.flights.get.call_count, 2)
+
+    def test_reopening_same_flight_fetches_changes_and_preserves_the_selected_tab(self):
+        self.page.load(self.flight.id)
+        self.page.tabs.setCurrentWidget(self.page.telemetry)
+        changed = replace(
+            self.flight,
+            engine_data=(replace(self.flight.engine_data[0], itt=900),),
+        )
+        self.flights.get.return_value = changed
+        self.page.load(self.flight.id)
+        self.assertIs(self.page.tabs.currentWidget(), self.page.telemetry)
+        self.assertEqual(self.page.overview.load.call_count, 2)
+        self.assertEqual(self.page.telemetry.load.call_count, 2)
+        self.page.telemetry.load.assert_called_with(changed)
+        self.assertEqual(self.page.telemetry.data[0].itt, 900)
+        self.assertEqual(self.page.telemetry.slider.maximum(), 0)
+        self.assertEqual(self.flights.get.call_count, 2)
+        self.route.load.assert_not_called()
+
+    def test_non_default_visible_tab_is_ready_without_loading_other_hidden_tabs(self):
+        self.page.tabs.setCurrentWidget(self.route)
+        self.route.load.assert_not_called()
+        self.page.load(self.flight.id)
+        self.assertIs(self.page.tabs.currentWidget(), self.route)
+        self.page.overview.load.assert_called_once_with(self.flight)
+        self.route.load.assert_called_once_with(self.flight)
+        for tab in (self.page.telemetry, self.page.cas, self.page.exceed):
+            tab.load.assert_not_called()
+
+    def test_report_tab_uses_current_snapshot_and_keeps_its_text_between_switches(self):
+        changed = replace(self.flight, predictive_report='Saved maintenance report')
+        self.flights.get.return_value = changed
+        self.page.load(changed.id)
+        self.assertEqual(self.page.report.toPlainText(), '')
+        self.page.tabs.setCurrentWidget(self.page.report_tab)
+        self.assertEqual(self.page.report.toPlainText(), 'Saved maintenance report')
+        self.page.report.setPlainText('Newly generated maintenance report')
+        self.page.tabs.setCurrentWidget(self.page.overview)
+        self.page.tabs.setCurrentWidget(self.page.report_tab)
+        self.assertEqual(self.page.report.toPlainText(), 'Newly generated maintenance report')
+        self.flights.get.assert_called_once_with(changed.id)
+
+    def test_missing_report_still_displays_the_professional_placeholder(self):
+        self.page.load(self.flight.id)
+        self.page.tabs.setCurrentWidget(self.page.report_tab)
+        self.assertEqual(
+            self.page.report.toPlainText(),
+            'No maintenance report has been generated for this flight yet.',
+        )
+
+    def test_export_before_opening_report_tab_preserves_the_newly_generated_text(self):
+        self.page.load(self.flight.id)
+        updated = replace(self.flight, predictive_report='Newly exported maintenance report')
+        self.flights.get.return_value = updated
+        self.page.report_controller.export_pdf.return_value = Path('synthetic-report.pdf')
+        with (
+            patch(
+                'helink.ui.pages.flight_details_page.QFileDialog.getSaveFileName',
+                return_value=('synthetic-report.pdf', ''),
+            ),
+            patch('helink.ui.pages.flight_details_page.QMessageBox.information'),
+        ):
+            self.page.export_report()
+        self.page.report_controller.export_pdf.assert_called_once_with(
+            self.flight.id, 'synthetic-report.pdf',
+        )
+        self.assertIn(self.page.report_tab, self.page._loaded_tabs)
+        self.page.tabs.setCurrentWidget(self.page.report_tab)
+        self.assertEqual(self.page.report.toPlainText(), updated.predictive_report)
 
 
 if __name__ == '__main__':

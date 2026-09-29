@@ -32,6 +32,11 @@ class Plot(Canvas):
     def _invalidate_cursor(self, _event=None):
         self._cursor_background = None
 
+    def draw_idle(self):
+        # Canvases outside the scroll viewport need no rasterisation yet.
+        if self.isVisible() and not self.visibleRegion().isEmpty():
+            super().draw_idle()
+
     def _cache_cursor_background(self, _event):
         if self._cursor_line is not None:
             # Animated cursors are excluded from the regular draw. Cache only
@@ -83,7 +88,7 @@ class Plot(Canvas):
         matches=re.findall(r'(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?',str(value or ''))
         if not matches:return '--:--:--'
         hour,minute,second=matches[-1]; return f'{int(hour):02d}:{minute}:{second or "00"}'
-    def lines(self, series, title, ylabel='', cursor=None, show_max=False, flight_time=False, time_labels=None):
+    def lines(self, series, title, ylabel='', cursor=None, show_max=False, flight_time=False, time_labels=None, render=True):
         self._selection_axes = (self.ax,)
         self._point_count = max((len(item[1]) for item in series), default=0)
         self._selection_artists = []
@@ -127,14 +132,20 @@ class Plot(Canvas):
             if time_labels:self.ax.xaxis.set_major_formatter(FuncFormatter(lambda value,_:self._clock_time(time_labels[min(len(time_labels)-1,max(0,int(round(value))))])))
             else:self.ax.xaxis.set_major_formatter(FuncFormatter(lambda value,_:self._flight_time(value)))
         if len(series)>1:self.ax.legend(fontsize=8,ncol=min(3,len(series)))
-        self.draw()
+        if render:
+            self.draw()
+        else:
+            self.draw_idle()
 
     def move_cursor(self, index):
         if self._cursor_line is None:
             return
         self._cursor_line.set_xdata([index, index])
+        if not self.isVisible() or self.visibleRegion().isEmpty():
+            self._cursor_background = None
+            return
         if self._cursor_background is None:
-            self.draw()
+            self.draw_idle()
             return
         self.restore_region(self._cursor_background)
         self.ax.draw_artist(self._cursor_line)

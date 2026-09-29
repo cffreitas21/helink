@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QItemSelectionModel, Qt, Signal
+from PySide6.QtCore import QItemSelectionModel, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -26,6 +26,7 @@ class FlightListPage(QWidget):
     import_requested = Signal(str)
     back_requested = Signal()
     analysis_requested = Signal(str)
+    loading_changed = Signal(bool, str)
 
     def __init__(self, aircraft_controller, flight_controller):
         super().__init__()
@@ -35,6 +36,11 @@ class FlightListPage(QWidget):
         self.row_checkboxes = []
         self._selection_syncing = False
         self._total_count = 0
+        self._query_token = 0
+        self._query_task = None
+        self._render_token = 0
+        self._render_pending = False
+        self._rendered_rows = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 24)
@@ -152,12 +158,18 @@ class FlightListPage(QWidget):
         self.table.doubleClicked.connect(self.open_current)
         root.addWidget(self.table)
 
-    def load(self, aircraft_id):
+    def load(self, aircraft_id, prepared=None):
+        self._query_token += 1
+        if self._query_task is not None:
+            self._query_task.cancel()
         changing_aircraft = aircraft_id != self.aid
         if changing_aircraft:
             self.date_filter.reset(emit=False)
         self.aid = aircraft_id
-        aircraft = self.aircraft_controller.get(aircraft_id)
+        aircraft = (
+            self.aircraft_controller.get(aircraft_id)
+            if prepared is None else prepared[0]
+        )
         self.analysis_button.setEnabled(aircraft is not None)
         if aircraft is None:
             self.title.setText('Aircraft unavailable')
@@ -171,14 +183,56 @@ class FlightListPage(QWidget):
             f'{aircraft.model} · SN {aircraft.serial_number} '
         )
 
-        rows = self._reload_rows()
-        if changing_aircraft:
+        if prepared is None:
+            rows = self._reload_rows(initialize_dates=changing_aircraft)
+        else:
+            rows = prepared[1]
+            self._render_rows(rows)
+        if changing_aircraft and (
+            prepared is not None or self.flight_controller.tasks is None
+        ):
             self.date_filter.set_available_dates(flight.flight_date for flight in rows)
 
-    def _reload_rows(self, *_):
+    def cancel_pending(self):
+        self._query_token += 1
+        if self._query_task is not None:
+            self._query_task.cancel()
+        self._render_token += 1
+        if self._render_pending:
+            self._rendered_rows = None
+        self._render_pending = False
+
+    def _reload_rows(self, *_, initialize_dates=False):
         if self.aid is None:
             return []
         start, end = self.date_filter.date_range
+        if self.flight_controller.tasks is not None:
+            self._query_token += 1
+            token = self._query_token
+            if self._query_task is not None:
+                self._query_task.cancel()
+            self.loading_changed.emit(True, 'Loading flights...')
+
+            def received(rows):
+                if token != self._query_token:
+                    return
+                if initialize_dates:
+                    self.date_filter.set_available_dates(flight.flight_date for flight in rows)
+                self._render_rows(rows)
+                if not self._render_pending:
+                    self.loading_changed.emit(False, '')
+
+            def failed(error):
+                if token == self._query_token:
+                    self.loading_changed.emit(False, '')
+                    QMessageBox.warning(self, 'Unable to load flights', str(error))
+
+            self._query_task = self.flight_controller.request(
+                'list_flights', self.aid, start_date=start, end_date=end,
+                descending=self.sort_order.currentData() == 'descending',
+                on_result=received, on_error=failed,
+            )
+            return []
         rows = self.flight_controller.list_flights(
             self.aid, start_date=start, end_date=end,
             descending=self.sort_order.currentData() == 'descending',
@@ -187,6 +241,10 @@ class FlightListPage(QWidget):
         return rows
 
     def _render_rows(self, rows):
+        if rows is self._rendered_rows and not self._render_pending:
+            return
+        self._render_token += 1
+        self._render_pending = False
         count = len(rows)
         filtered = self.date_filter.date_range != (None, None)
         if filtered:
@@ -201,18 +259,56 @@ class FlightListPage(QWidget):
             else 'No flights have been imported for this aircraft.'
         )
         self.filter_message.setVisible(count == 0)
+        if self.flight_controller.tasks is not None and count > 40:
+            self._render_rows_in_batches(rows)
+            return
         self.table.setUpdatesEnabled(False)
         try:
             self._populate_rows(rows)
         finally:
             self.table.setUpdatesEnabled(True)
+        self._rendered_rows = rows
 
-    def _populate_rows(self, rows):
+    def _render_rows_in_batches(self, rows):
+        token = self._render_token
+        self._render_pending = True
         self.row_checkboxes.clear()
         self.table.clearContents()
         self.table.setRowCount(len(rows))
+        self.selection_header.set_check_enabled(False)
 
-        for row, flight in enumerate(rows):
+        def batch(start=0):
+            if token != self._render_token:
+                return
+            end = min(len(rows), start + 24)
+            self.loading_changed.emit(
+                True, f'Preparing flight list ({end} of {len(rows)})...',
+            )
+            self.table.setUpdatesEnabled(False)
+            try:
+                self._populate_rows(
+                    rows[start:end], start=start, reset=False, finish=False,
+                )
+            finally:
+                self.table.setUpdatesEnabled(True)
+            if end < len(rows):
+                QTimer.singleShot(0, lambda: batch(end))
+            else:
+                self._render_pending = False
+                self._rendered_rows = rows
+                self.selection_header.set_check_enabled(bool(rows))
+                self._sync_selection_ui()
+                self.loading_changed.emit(False, '')
+
+        QTimer.singleShot(0, batch)
+
+    def _populate_rows(self, rows, *, start=0, reset=True, finish=True):
+        if reset:
+            self.row_checkboxes.clear()
+            self.table.clearContents()
+            self.table.setRowCount(len(rows))
+
+        for row, flight in enumerate(rows, start):
             # Items underneath cell widgets keep the selection background continuous.
             for column in (0, 6, 7):
                 self.table.setItem(row, column, QTableWidgetItem())
@@ -292,8 +388,9 @@ class FlightListPage(QWidget):
             action_layout.addStretch()
             self.table.setCellWidget(row, 7, actions)
 
-        self.selection_header.set_check_enabled(bool(rows))
-        self._sync_selection_ui()
+        if finish:
+            self.selection_header.set_check_enabled(bool(rows))
+            self._sync_selection_ui()
 
     @staticmethod
     def _route_label(flight):

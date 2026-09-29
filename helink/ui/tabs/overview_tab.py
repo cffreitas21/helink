@@ -260,7 +260,7 @@ class OverviewTab(QWidget):
                 group['columns'] = count
         return super().eventFilter(watched, event)
 
-    def load(self, flight):
+    def load(self, flight, *, statistics=None, events=None, route=None):
         for key, text in (
             ('date', flight.flight_date), ('departure', flight.departure_time),
             ('arrival', flight.arrival_time), ('duration', flight.duration),
@@ -269,7 +269,8 @@ class OverviewTab(QWidget):
         ):
             self.summary_values[key].setText(text or '\u2014')
 
-        statistics = flight_parameter_statistics(flight)
+        if statistics is None:
+            statistics = flight_parameter_statistics(flight)
         for _, specs in PARAMETER_GROUPS:
             for key, label, unit, decimals in specs:
                 summary = statistics[key]
@@ -289,7 +290,9 @@ class OverviewTab(QWidget):
                     value.setAccessibleName(f'{label} {name.upper()} ({unit})')
                     value.setToolTip(tooltip)
 
-        for key, summary in important_flight_events(flight).items():
+        for key, summary in (
+            important_flight_events(flight) if events is None else events
+        ).items():
             badge = self.event_badges[key]
             self.event_values[key].setText(
                 str(summary.count) if summary.available else '\u2014'
@@ -324,7 +327,8 @@ class OverviewTab(QWidget):
                 widget.update()
             badge.updateGeometry()
 
-        route = flight_route_availability(flight)
+        if route is None:
+            route = flight_route_availability(flight)
         self.view_route_button.setText(
             'View Route' if route.available else 'Route Unavailable'
         )

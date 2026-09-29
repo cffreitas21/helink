@@ -8,8 +8,33 @@ from helink.services.aircraft_trend_summary import summarise_aircraft_trends
 class AircraftController:
     """Coordinates fleet use cases exposed to the UI."""
 
-    def __init__(self, repository: AircraftRepository):
+    def __init__(self, repository: AircraftRepository, tasks=None):
         self.repository = repository
+        self.tasks = tasks
+
+    def request(self, method, *args, on_result, on_error, **kwargs):
+        return self.tasks.query(
+            lambda database, _progress: getattr(
+                AircraftController(AircraftRepository(database)), method,
+            )(*args, **kwargs),
+            on_result, on_error,
+            cache_key=('aircraft', method, args, kwargs),
+        )
+
+    def dashboard_data(self):
+        return self.list_aircraft(), self.fleet_summaries()
+
+    def analysis_data(self, aircraft_id, allow_comparison, parameter):
+        if allow_comparison:
+            aircraft = self.list_for_analysis()
+        else:
+            item = self.get(aircraft_id)
+            aircraft = [item] if item is not None else []
+        selected = [
+            item.id for item in aircraft
+            if not aircraft_id or item.id == aircraft_id
+        ]
+        return aircraft, self.daily_parameter_trends(selected, parameter)
 
     def list_aircraft(self):
         return self.repository.find_all()

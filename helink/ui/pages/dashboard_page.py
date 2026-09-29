@@ -24,6 +24,7 @@ class DashboardPage(QWidget):
     def __init__(self, aircraft_controller):
         super().__init__()
         self.aircraft_controller = aircraft_controller
+        self._rendered_data = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 24)
@@ -57,9 +58,15 @@ class DashboardPage(QWidget):
         scroll.setWidget(self.container)
         root.addWidget(scroll)
 
-    def refresh(self):
-        aircraft = self.aircraft_controller.list_aircraft()
-        summaries = self.aircraft_controller.fleet_summaries()
+    def refresh(self, prepared=None):
+        if prepared is not None and prepared is self._rendered_data:
+            return
+        if prepared is None:
+            aircraft = self.aircraft_controller.list_aircraft()
+            summaries = self.aircraft_controller.fleet_summaries()
+        else:
+            aircraft, summaries = prepared
+        self._rendered_data = prepared
         self._clear_list()
 
         if not aircraft:

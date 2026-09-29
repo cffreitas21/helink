@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QTimer, Qt
 from math import isfinite
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
@@ -22,6 +22,7 @@ from helink.ui.telemetry_parameters import (
     OVERVIEW_TELEMETRY_PARAMETERS, TELEMETRY_PARAMETERS,
 )
 from helink.ui.widgets import Card, ChartFilterButton, CombinedTelemetryPlot, Plot
+from helink.ui.widgets.combined_chart_toolbar import CombinedChartToolbar
 
 
 class TelemetryTab(QWidget):
@@ -47,6 +48,13 @@ class TelemetryTab(QWidget):
         self.plots = {}
         self.chart_cards = {}
         self._combined_mode = False
+        self._reset_combined_view = True
+        self._series_cache = {}
+        self._time_labels = []
+        self._render_timer = QTimer(self)
+        self._render_timer.setSingleShot(True)
+        self._render_timer.setInterval(0)
+        self._render_timer.timeout.connect(self._render_visible_charts)
 
         root = QVBoxLayout(self)
         root.setSpacing(8)
@@ -138,6 +146,8 @@ class TelemetryTab(QWidget):
 
         scroll = QScrollArea()
         self.chart_scroll = scroll
+        scroll.viewport().installEventFilter(self)
+        scroll.verticalScrollBar().valueChanged.connect(self._schedule_render)
         scroll.setWidgetResizable(True)
         charts = QWidget()
         grid = QGridLayout(charts)
@@ -157,8 +167,16 @@ class TelemetryTab(QWidget):
         self.combined_plot = CombinedTelemetryPlot()
         self.combined_plot.setMinimumHeight(560)
         self.combined_plot.setToolTip(
-            'Click anywhere to select a timestamp. Click a MAX legend entry to select its maximum.'
+            'Scroll over the plot to zoom. Use Pan to drag or Zoom Area to select a region. '
+            'Turn navigation off to select a timestamp or a MAX legend entry.'
         )
+        combined_heading = QHBoxLayout()
+        combined_title = self.combined_card.layout.takeAt(0).widget()
+        combined_heading.addWidget(combined_title)
+        combined_heading.addStretch()
+        self.combined_toolbar = CombinedChartToolbar(self.combined_plot, self.combined_card)
+        combined_heading.addWidget(self.combined_toolbar)
+        self.combined_card.layout.addLayout(combined_heading)
         self.combined_plot.point_selected.connect(self.slider.setValue)
         self.combined_card.layout.addWidget(self.combined_plot)
         self.combined_card.hide()
@@ -273,6 +291,32 @@ class TelemetryTab(QWidget):
                 )
         if not visible:
             self.chart_grid.addWidget(self.chart_empty_state, 0, 0, 1, 2)
+        self._schedule_render()
+
+    def _schedule_render(self, *_):
+        if not self._render_timer.isActive():
+            self._render_timer.start()
+
+    def eventFilter(self, watched, event):
+        if event.type() in (QEvent.Resize, QEvent.Show):
+            self._schedule_render()
+        return super().eventFilter(watched, event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._schedule_render()
+
+    def _render_visible_charts(self):
+        plots = (
+            [self.combined_plot] if self._combined_mode
+            else [plot for plot, _title, _unit in self.plots.values()]
+        )
+        for plot in plots:
+            if (
+                plot.isVisible() and not plot.visibleRegion().isEmpty()
+                and plot._cursor_background is None
+            ):
+                plot.draw_idle()
 
     def _set_combined_mode(self, enabled):
         self._combined_mode = enabled
@@ -285,47 +329,58 @@ class TelemetryTab(QWidget):
         )
         self._update_visible_charts(self.chart_filter.selected_keys())
 
-    def _draw_combined_chart(self):
+    def _draw_combined_chart(self, *, reset_view=False):
         series = []
         for key in self.chart_filter.selected_keys():
             plot, title, unit = self.plots[key]
-            values = (
-                plot.ax.lines[0].get_ydata()
-                if plot.ax.lines and plot.ax.lines[0] is not plot._cursor_line
-                else ()
-            )
+            values = self._parameter_values(key)
             series.append((title, values, plot.series_color, unit))
         self.combined_plot.parameters(
-            series, [point.timestamp for point in self.data], self.slider.value(),
+            series, self._time_labels, self.slider.value(), render=False,
+            preserve_view=not (reset_view or self._reset_combined_view),
         )
+        self._reset_combined_view = False
+        self.combined_toolbar.setEnabled(len(self.data) > 1)
 
     def load(self, flight):
+        self.combined_toolbar.clear_mode()
+        self._reset_combined_view = True
         self.flight = flight
         self.data = flight.engine_data or flight.data_log
+        self._series_cache.clear()
+        self._time_labels = [point.timestamp for point in self.data]
         self.slider.blockSignals(True)
         self.slider.setRange(0, max(0, len(self.data) - 1))
         self.slider.setValue(0)
         self.slider.blockSignals(False)
         self._draw_charts()
         self.update_cursor()
+        # A navigation overlay can still cover the canvases during load.
+        # Schedule their first visible frame after the page has been revealed.
+        self._schedule_render()
 
     def _draw_charts(self):
         for key in self.plots:
             self._draw_chart(key)
         if self._combined_mode and self.chart_filter.selected_keys():
-            self._draw_combined_chart()
+            self._draw_combined_chart(reset_view=True)
 
     def _draw_chart(self, key):
         plot, title, unit = self.plots[key]
-        values = (
-            flight_parameter_series(self.flight, key, self.data)
-            if self.flight is not None else []
-        )
+        values = self._parameter_values(key)
         plot.lines(
             [(title, values, plot.series_color)],
             '', unit, cursor=self.slider.value(), show_max=True,
-            flight_time=True, time_labels=[point.timestamp for point in self.data],
+            flight_time=True, time_labels=self._time_labels, render=False,
         )
+
+    def _parameter_values(self, key):
+        if key not in self._series_cache:
+            self._series_cache[key] = (
+                flight_parameter_series(self.flight, key, self.data)
+                if self.flight is not None else []
+            )
+        return self._series_cache[key]
 
     def _update_instrument_window(self, selected_index):
         selected_background = QColor('#dbeafe')
