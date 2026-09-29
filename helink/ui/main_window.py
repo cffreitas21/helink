@@ -78,7 +78,7 @@ class MainWindow(QMainWindow):
             self.navigation_controller.show_fleet_analysis
         )
         self.fleet_analysis.back_requested.connect(
-            self.navigation_controller.show_dashboard
+            self.navigation_controller.back_from_analysis
         )
         self.fleet_analysis.flights_requested.connect(
             self.navigation_controller.show_aircraft
@@ -89,6 +89,9 @@ class MainWindow(QMainWindow):
         )
         self.flight_list.flight_selected.connect(
             self.navigation_controller.show_flight
+        )
+        self.flight_list.analysis_requested.connect(
+            self.navigation_controller.show_aircraft_analysis
         )
         self.flight_list.import_requested.connect(self.import_for_aircraft)
         self.flight_details.back_requested.connect(
@@ -127,8 +130,8 @@ class MainWindow(QMainWindow):
         self.flight_details.load(flight_id)
         self.stack.setCurrentWidget(self.flight_details)
 
-    def display_fleet_analysis(self, aircraft_id=None):
-        self.fleet_analysis.load(aircraft_id)
+    def display_fleet_analysis(self, aircraft_id=None, *, allow_comparison=True):
+        self.fleet_analysis.load(aircraft_id, allow_comparison=allow_comparison)
         self.stack.setCurrentWidget(self.fleet_analysis)
 
     def add_aircraft(self):

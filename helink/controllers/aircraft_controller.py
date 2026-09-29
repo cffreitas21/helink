@@ -40,6 +40,10 @@ class AircraftController:
     def trend_summaries(self, days, statistic='average'):
         return summarise_aircraft_trends(days, statistic)
 
+    def parameter_flights_for_day(self, aircraft_id, flight_date, parameter):
+        day = date.fromisoformat(str(flight_date)).isoformat()
+        return self.repository.parameter_flights_for_day(aircraft_id, day, parameter)
+
     def add(self, registration, model, serial_number):
         return self.repository.add(registration, model, serial_number)
 

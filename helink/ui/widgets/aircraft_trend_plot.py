@@ -14,13 +14,14 @@ class AircraftTrendPlot(FigureCanvasQTAgg):
     """Real calendar dates, shared physical scale, and clickable daily values."""
 
     day_selected = Signal(object)
+    CHART_HEIGHT = 380
 
     def __init__(self, parent=None):
         self.fig = Figure(figsize=(10, 4), layout='constrained', facecolor='white')
         self.ax = self.fig.add_subplot(111)
         super().__init__(self.fig)
         self.setParent(parent)
-        self.setMinimumHeight(300)
+        self.setFixedHeight(self.CHART_HEIGHT)
         self.series = []
         self._annotation = None
         self._unit = ''
@@ -64,6 +65,9 @@ class AircraftTrendPlot(FigureCanvasQTAgg):
                 )
                 handles.append(line)
                 self.series.append((line, recorded, dates, values))
+        legend_rows = (len(handles) + 2) // 3
+        # Add space for extra legend rows instead of reducing the plot area.
+        self.setFixedHeight(self.CHART_HEIGHT + max(0, legend_rows - 1) * 24)
         if not handles:
             self.ax.set_axis_off()
             message = (

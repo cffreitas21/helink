@@ -3,6 +3,7 @@ from sys import float_info
 
 from helink.models.aircraft import Aircraft
 from helink.models.aircraft_parameter_day import AircraftParameterDay
+from helink.models.aircraft_parameter_flight import AircraftParameterFlight
 
 
 TREND_PARAMETER_TABLES = {
@@ -113,6 +114,29 @@ class AircraftRepository:
             values,
         )
         return [AircraftParameterDay.from_record(dict(row)) for row in rows]
+
+    def parameter_flights_for_day(self, aircraft_id, flight_date, parameter):
+        """Return every flight of a day, including those missing this sensor."""
+        if parameter not in TREND_PARAMETER_TABLES:
+            raise ValueError('The selected parameter is not available for fleet analysis.')
+        table = TREND_PARAMETER_TABLES[parameter]
+        rows = self.connection.execute(
+            f"""SELECT f.id AS flight_id, f.aircraft_id, f.flight_date,
+                       f.departure_time, f.arrival_time,
+                       AVG(d.{parameter}) AS average,
+                       MAX(d.{parameter}) AS maximum,
+                       COUNT(d.{parameter}) AS sample_count
+                FROM flights f
+                LEFT JOIN {table} d ON d.flight_id=f.id
+                    AND typeof(d.{parameter}) IN ('real', 'integer')
+                    AND d.{parameter} BETWEEN ? AND ?
+                WHERE f.aircraft_id=? AND f.flight_date=?
+                GROUP BY f.id
+                ORDER BY CASE WHEN COALESCE(f.departure_time, '')='' THEN 1 ELSE 0 END,
+                         f.departure_time, f.id""",
+            (-float_info.max, float_info.max, aircraft_id, flight_date),
+        )
+        return [AircraftParameterFlight.from_record(dict(row)) for row in rows]
 
     def add(self,registration,model,serial_number):
         aircraft_id=registration.lower().replace(' ','-')

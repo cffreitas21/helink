@@ -9,8 +9,8 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from PySide6.QtCore import QDate, Qt, Signal
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtCore import QDate, QPoint, QPointF, Qt, Signal
+from PySide6.QtGui import QFontDatabase, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QToolButton, QWidget
 from matplotlib.backend_bases import MouseEvent
@@ -179,6 +179,51 @@ class DailyTrendQueryTests(TrendFixture, unittest.TestCase):
             with self.subTest(parameter=key):
                 self.controller.daily_parameter_trends(('a', 'b'), key)
 
+    def test_daily_flights_are_separate_sorted_and_loaded_in_one_query(self):
+        queries = []
+        self.connection.set_trace_callback(queries.append)
+        flights = self.controller.parameter_flights_for_day('a', '2026-09-01', 'eng_ot')
+        self.assertEqual(len(queries), 1)
+        self.assertEqual([flight.flight_id for flight in flights], ['a1', 'a2'])
+        self.assertEqual([flight.departure_time for flight in flights], ['08:00:00', '14:00:00'])
+        self.assertEqual([flight.average for flight in flights], [80, 100])
+        self.assertEqual([flight.maximum for flight in flights], [80, 100])
+        self.assertEqual([flight.sample_count for flight in flights], [1, 3])
+        self.assertTrue(all(flight.aircraft_id == 'a' for flight in flights))
+
+    def test_flight_breakdown_keeps_flights_without_sensor_values(self):
+        flights = self.controller.parameter_flights_for_day('a', '2026-09-15', 'eng_ot')
+        self.assertEqual(len(flights), 1)
+        self.assertEqual(flights[0].flight_id, 'a4')
+        self.assertIsNone(flights[0].average)
+        self.assertIsNone(flights[0].maximum)
+        self.assertEqual(flights[0].sample_count, 0)
+
+    def test_flight_breakdown_filters_invalid_values_but_includes_zero(self):
+        self.connection.executemany(
+            "INSERT INTO engine_data(flight_id,seq,eng_ot) VALUES('a1',?,?)",
+            ((1, 'UNK'), (2, float('inf')), (3, float('-inf')), (4, None), (5, 0)),
+        )
+        flight = self.controller.parameter_flights_for_day('a', '2026-09-01', 'eng_ot')[0]
+        self.assertEqual(flight.average, 40)
+        self.assertEqual(flight.maximum, 80)
+        self.assertEqual(flight.sample_count, 2)
+
+    def test_flight_breakdown_uses_gps_values_for_gps_parameters(self):
+        flight, = self.controller.parameter_flights_for_day('a', '2026-09-15', 'ias')
+        self.assertEqual(flight.average, 120)
+        self.assertEqual(flight.maximum, 120)
+        self.assertEqual(flight.sample_count, 1)
+
+    def test_daily_flight_query_rejects_invalid_date_or_parameter(self):
+        queries = []
+        self.connection.set_trace_callback(queries.append)
+        with self.assertRaises(ValueError):
+            self.controller.parameter_flights_for_day('a', 'invalid', 'eng_ot')
+        with self.assertRaises(ValueError):
+            self.controller.parameter_flights_for_day('a', '2026-09-01', 'invalid')
+        self.assertEqual(queries, [])
+
 
 class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
     @classmethod
@@ -206,6 +251,130 @@ class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
         self.assertIn('\u00b0C', self.page.plot.ax.get_ylabel())
         _, _, dates, _ = self.page.plot.series[0]
         self.assertEqual(dates[1] - dates[0], 9)
+
+    def test_initial_single_aircraft_analysis_fits_without_vertical_scrolling(self):
+        for _ in range(3):
+            self.app.processEvents()
+        self.assertEqual(self.page.scroll.verticalScrollBar().maximum(), 0)
+        self.assertFalse(self.page.scroll.verticalScrollBar().isVisible())
+        self.assertFalse(self.page.scroll.horizontalScrollBar().isVisible())
+        self.assertEqual(self.page.plot.height(), self.page.plot.CHART_HEIGHT)
+        self.assertLessEqual(self.page.plot.height(), 400)
+        self.assertEqual(self.page.comparison.verticalScrollBar().maximum(), 0)
+
+    def test_page_scrollbars_appear_only_when_needed_in_both_analysis_modes(self):
+        for allow_comparison in (True, False):
+            with self.subTest(allow_comparison=allow_comparison):
+                self.page.load('a', allow_comparison=allow_comparison)
+                self.page.resize(1200, 850)
+                for _ in range(3):
+                    self.app.processEvents()
+                self.assertEqual(
+                    self.page.scroll.verticalScrollBarPolicy(), Qt.ScrollBarAsNeeded,
+                )
+                self.assertEqual(
+                    self.page.scroll.horizontalScrollBarPolicy(), Qt.ScrollBarAsNeeded,
+                )
+                scrollbar = self.page.scroll.verticalScrollBar()
+                self.assertEqual(scrollbar.maximum(), 0)
+                self.assertFalse(scrollbar.isVisible())
+                original_height = self.page.plot.height()
+                self.page.resize(1200, 550)
+                for _ in range(3):
+                    self.app.processEvents()
+                self.assertGreater(scrollbar.maximum(), 0)
+                self.assertTrue(scrollbar.isVisible())
+                self.assertEqual(self.page.plot.height(), original_height)
+                self.page.resize(1200, 850)
+                for _ in range(3):
+                    self.app.processEvents()
+                self.assertEqual(scrollbar.maximum(), 0)
+                self.assertFalse(scrollbar.isVisible())
+                self.assertEqual(self.page.plot.height(), original_height)
+
+    def test_individual_mode_loads_only_its_aircraft_without_a_comparison_selector(self):
+        with patch.object(self.controller, 'list_for_analysis') as fleet_query:
+            self.page.load('b', allow_comparison=False)
+        fleet_query.assert_not_called()
+        self.assertEqual([item.id for item in self.page.aircraft], ['b'])
+        self.assertEqual(set(self.page.aircraft_selector.checkboxes), {'b'})
+        self.assertTrue(self.page.aircraft_selector.isHidden())
+        self.assertFalse(self.page.aircraft_selector.isEnabled())
+        self.assertTrue(self.page.view_flights.isHidden())
+        self.assertEqual(self.page.title.text(), 'Aircraft Analysis')
+        self.assertEqual(self.page.back_button.text(), '\N{LEFTWARDS ARROW} Flights')
+        self.assertEqual(self.page.comparison_title.text(), 'Period Summary')
+        self.assertIn('TEST-B', self.page.context.text())
+        self.assertEqual(self.page.comparison.rowCount(), 1)
+        self.assertEqual(self.page.comparison.item(0, 0).text(), 'TEST-B')
+        self.assertTrue(all(day.aircraft_id == 'b' for day in self.page.days))
+
+    def test_individual_mode_remains_pinned_when_selection_and_filters_change(self):
+        self.page.load('b', allow_comparison=False)
+        with patch.object(
+            self.controller, 'daily_parameter_trends',
+            wraps=self.controller.daily_parameter_trends,
+        ) as query:
+            self.page.aircraft_selector.set_selected(('a', 'c'))
+            self.page.parameter.setCurrentIndex(self.page.parameter.findData('itt'))
+            self.page.statistic.setCurrentIndex(self.page.statistic.findData('both'))
+            self.page.date_filter.mode.setCurrentIndex(1)
+            self.page.date_filter.start_edit.setDate(QDate(2026, 9, 10))
+            self.page.date_filter.apply()
+        self.assertTrue(query.call_args_list)
+        self.assertTrue(all(call.args[0] == ('b',) for call in query.call_args_list))
+        self.assertEqual(self.page._selected_aircraft_ids(), ('b',))
+        self.assertEqual(len(self.page.days), 1)
+        self.assertEqual(self.page.days[0].aircraft_id, 'b')
+        self.assertEqual(self.page.days[0].flight_date, '2026-09-10')
+        self.assertEqual(len(self.page.plot.series), 2)
+
+    def test_individual_day_details_still_show_each_flight_and_daily_totals(self):
+        self.page.load('a', allow_comparison=False)
+        self.page._show_day(self.page.days[0])
+        lines = self.page.day_details.toPlainText().splitlines()
+        self.assertEqual(len(lines), 4)
+        self.assertIn('Flight 1', lines[1])
+        self.assertIn('Flight 2', lines[2])
+        self.assertIn('TOTAL', lines[3])
+        self.assertIn('AVG 95.0', lines[3])
+        self.assertIn('MAX 100.0', lines[3])
+        foreign_day = self.controller.daily_parameter_trends(('b',), 'eng_ot')[0]
+        with patch.object(self.controller, 'parameter_flights_for_day') as query:
+            self.page._show_day(foreign_day)
+        query.assert_not_called()
+        self.assertEqual(self.page.day_details.toPlainText().splitlines(), lines)
+
+    def test_missing_or_empty_individual_aircraft_never_falls_back_to_the_fleet(self):
+        self.page.load('c', allow_comparison=False)
+        self.assertEqual(self.page._selected_aircraft_ids(), ('c',))
+        self.assertEqual(self.page.days, [])
+        self.assertEqual(self.page.comparison.rowCount(), 1)
+        self.assertEqual(self.page.plot.series, [])
+        self.page.load('missing', allow_comparison=False)
+        self.assertEqual(self.page._selected_aircraft_ids(), ())
+        self.assertEqual(self.page.days, [])
+        self.assertEqual(self.page.comparison.rowCount(), 0)
+        self.assertIn('Aircraft unavailable', self.page.context.text())
+        with self.assertRaises(ValueError):
+            self.page.load(allow_comparison=False)
+
+    def test_reopening_from_fleet_restores_full_comparison_on_the_same_page(self):
+        self.page.load('b', allow_comparison=False)
+        self.page.date_filter.mode.setCurrentIndex(1)
+        self.page.date_filter.start_edit.setDate(QDate(2026, 9, 10))
+        self.page.date_filter.apply()
+        self.page.load()
+        self.assertFalse(self.page.aircraft_selector.isHidden())
+        self.assertTrue(self.page.aircraft_selector.isEnabled())
+        self.assertEqual(self.page.title.text(), 'Fleet Analysis')
+        self.assertEqual(self.page.back_button.text(), '\N{LEFTWARDS ARROW} Fleet')
+        self.assertEqual(self.page.comparison_title.text(), 'Period Comparison')
+        self.assertEqual(self.page.aircraft_selector.selected_ids(), ('a', 'b', 'c'))
+        self.assertEqual(self.page.date_filter.date_range, (None, None))
+        self.assertEqual(self.page.comparison.rowCount(), 3)
+        self.page.aircraft_selector.set_selected(('a', 'b'))
+        self.assertEqual({day.aircraft_id for day in self.page.days}, {'a', 'b'})
 
     def test_comparison_uses_stable_colors_and_does_not_invent_missing_values(self):
         self.page.aircraft_selector.set_selected(('a', 'b', 'c'))
@@ -291,9 +460,9 @@ class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
         self.page.plot.day_selected.connect(received.append)
         self.page.plot._on_click(event)
         self.assertEqual(received, [days[1]])
-        self.assertIn('TEST-B', self.page.day_details.text())
-        self.assertIn('10/09/2026', self.page.day_details.text())
-        self.assertIn('AVG 90.0', self.page.day_details.text())
+        self.assertIn('TEST-B', self.page.day_details.toPlainText())
+        self.assertIn('10/09/2026', self.page.day_details.toPlainText())
+        self.assertIn('AVG 90.0', self.page.day_details.toPlainText())
         self.assertEqual(self.page.comparison.currentRow(), 1)
 
     def test_flight_and_fleet_navigation_actions_still_work(self):
@@ -308,6 +477,203 @@ class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
         )
         button.click()
         self.assertEqual(back, [True])
+
+    def test_daily_information_can_be_selected_and_copied(self):
+        label = self.page.day_details
+        flags = label.textInteractionFlags()
+        self.assertTrue(flags & Qt.TextSelectableByMouse)
+        self.assertTrue(flags & Qt.TextSelectableByKeyboard)
+        self.assertTrue(label.isReadOnly())
+        self.page._show_day(self.page.days[0])
+        label.setFocus()
+        label.selectAll()
+        self.assertEqual(
+            label.textCursor().selectedText().replace('\u2029', '\n'), label.toPlainText(),
+        )
+        # The offscreen clipboard is isolated from the user's system clipboard.
+        if self.app.platformName() == 'offscreen':
+            clipboard = self.app.clipboard()
+            original = clipboard.text()
+            try:
+                QTest.keyClick(label, Qt.Key_C, Qt.ControlModifier)
+                self.assertEqual(clipboard.text(), label.toPlainText())
+            finally:
+                clipboard.setText(original)
+
+    def test_selected_day_lists_each_flight_then_sample_weighted_total(self):
+        self.connection.execute(
+            "UPDATE flights SET arrival_time='09:00:00' WHERE id='a1'"
+        )
+        self.connection.execute(
+            "UPDATE flights SET arrival_time='15:00:00' WHERE id='a2'"
+        )
+        self.page._show_day(self.page.days[0])
+        lines = self.page.day_details.toPlainText().splitlines()
+        self.assertEqual(len(lines), 4)
+        self.assertIn('TEST-A', lines[0])
+        self.assertIn('ENG OIL TEMP', lines[0])
+        self.assertIn('Flight 1', lines[1])
+        self.assertIn('08:00:00 \u2192 09:00:00', lines[1])
+        self.assertIn('AVG 80.0 \u00b0C', lines[1])
+        self.assertIn('MAX 80.0 \u00b0C', lines[1])
+        self.assertIn('Flight 2', lines[2])
+        self.assertIn('14:00:00 \u2192 15:00:00', lines[2])
+        self.assertIn('AVG 100.0 \u00b0C', lines[2])
+        self.assertTrue(lines[-1].startswith('TOTAL'))
+        self.assertIn('AVG 95.0 \u00b0C', lines[-1])
+        self.assertIn('MAX 100.0 \u00b0C', lines[-1])
+
+    def test_flights_without_selected_sensor_are_visible_but_do_not_change_totals(self):
+        self.connection.execute(
+            "INSERT INTO flights(id,aircraft_id,flight_date,departure_time)"
+            " VALUES('no-sensor','a','2026-09-01','16:00:00')"
+        )
+        self.page._show_day(self.page.days[0])
+        lines = self.page.day_details.toPlainText().splitlines()
+        self.assertEqual(len(lines), 5)
+        self.assertIn('Flight 3', lines[3])
+        self.assertIn('AVG \u2014', lines[3])
+        self.assertIn('MAX \u2014', lines[3])
+        self.assertIn('No recorded values', lines[3])
+        self.assertIn('AVG 95.0', lines[-1])
+
+    def test_repeated_day_clicks_reuse_breakdown_and_sensor_change_invalidates_cache(self):
+        with patch.object(
+            self.controller, 'parameter_flights_for_day',
+            wraps=self.controller.parameter_flights_for_day,
+        ) as query:
+            self.page._show_day(self.page.days[0])
+            self.page._show_day(self.page.days[0])
+            self.assertEqual(query.call_count, 1)
+            self.page.parameter.setCurrentIndex(self.page.parameter.findData('eng_op'))
+            self.page._show_day(self.page.days[0])
+            self.assertEqual(query.call_count, 2)
+        self.assertIn('ENG OIL PRESS', self.page.day_details.toPlainText())
+        self.assertIn('AVG 50.0 psi', self.page.day_details.toPlainText())
+        self.assertNotIn('95.0', self.page.day_details.toPlainText())
+
+    def test_many_flights_expand_content_and_scroll_the_page_without_shrinking_chart(self):
+        original_height = self.page.plot.height()
+        original_window_height = self.page.height()
+        self.connection.executemany(
+            "INSERT INTO flights(id,aircraft_id,flight_date,departure_time)"
+            " VALUES(?,'a','2026-09-01','16:00:00')",
+            ((f'extra-{index}',) for index in range(35)),
+        )
+        self.page._show_day(self.page.days[0])
+        for _ in range(3):
+            self.app.processEvents()
+        self.assertEqual(len(self.page.day_details.toPlainText().splitlines()), 39)
+        self.assertGreater(self.page.day_details.height(), 180)
+        self.assertEqual(self.page.day_details.verticalScrollBar().maximum(), 0)
+        self.assertGreater(self.page.scroll.verticalScrollBar().maximum(), 0)
+        self.assertTrue(self.page.scroll.verticalScrollBar().isVisible())
+        self.assertTrue(self.page.day_details.toPlainText().splitlines()[-1].startswith('TOTAL'))
+        self.assertEqual(self.page.plot.height(), original_height)
+        self.assertEqual(self.page.height(), original_window_height)
+
+    def test_selection_and_day_details_do_not_reduce_chart_height(self):
+        original_height = self.page.plot.height()
+        original_range = self.page.scroll.verticalScrollBar().maximum()
+        self.page.aircraft_selector.set_selected(('a', 'b', 'c'))
+        self.page._show_day(self.page.days[0])
+        for _ in range(3):
+            self.app.processEvents()
+        self.assertEqual(self.page.plot.height(), original_height)
+        self.assertGreater(self.page.scroll.verticalScrollBar().maximum(), original_range)
+        self.assertEqual(self.page.comparison.verticalScrollBar().maximum(), 0)
+        self.assertTrue(self.page.content.isAncestorOf(self.page.view_flights))
+
+    def test_many_aircraft_and_legend_rows_add_height_instead_of_compressing_plot(self):
+        self.page.plot.draw()
+        original_height = self.page.plot.height()
+        original_axes_height = self.page.plot.ax.bbox.height
+        for index in range(6):
+            aircraft_id = f'extra-aircraft-{index}'
+            flight_id = f'extra-flight-{index}'
+            self.connection.execute(
+                'INSERT INTO aircraft(id,registration,model,serial_number) VALUES(?,?,?,?)',
+                (aircraft_id, f'TEST-{index}', 'Bell 505', str(index)),
+            )
+            self.connection.execute(
+                "INSERT INTO flights(id,aircraft_id,flight_date,departure_time)"
+                " VALUES(?,?,'2026-09-01','08:00:00')", (flight_id, aircraft_id),
+            )
+            self.connection.execute(
+                "INSERT INTO engine_data(flight_id,seq,eng_ot) VALUES(?,0,?)",
+                (flight_id, 80 + index),
+            )
+        self.page.load()
+        self.page.statistic.setCurrentIndex(self.page.statistic.findData('both'))
+        for _ in range(3):
+            self.app.processEvents()
+        self.page.plot.draw()
+        self.assertEqual(self.page.comparison.rowCount(), 9)
+        self.assertGreater(self.page.comparison.height(), 9 * 40)
+        self.assertEqual(self.page.comparison.verticalScrollBar().maximum(), 0)
+        self.assertGreater(self.page.plot.height(), original_height)
+        self.assertGreaterEqual(self.page.plot.ax.bbox.height, original_axes_height - 2)
+        self.assertGreater(self.page.scroll.verticalScrollBar().maximum(), 0)
+
+    def test_mouse_wheel_over_chart_scrolls_the_whole_page(self):
+        self.page.resize(1200, 550)
+        for _ in range(3):
+            self.app.processEvents()
+        scrollbar = self.page.scroll.verticalScrollBar()
+        scrollbar.setValue(0)
+        original_size = self.page.plot.size()
+        position = QPoint(100, 100)
+        event = QWheelEvent(
+            QPointF(position), QPointF(self.page.plot.mapToGlobal(position)),
+            QPoint(0, 0), QPoint(0, -120), Qt.NoButton, Qt.NoModifier,
+            Qt.NoScrollPhase, False,
+        )
+        self.app.sendEvent(self.page.plot, event)
+        self.app.processEvents()
+        self.assertGreater(scrollbar.value(), 0)
+        self.assertEqual(self.page.plot.size(), original_size)
+
+    def test_mouse_wheel_over_details_and_table_scrolls_the_page_not_the_widgets(self):
+        self.page.resize(1200, 550)
+        self.page.load()
+        self.page._show_day(self.page.days[0])
+        for _ in range(3):
+            self.app.processEvents()
+        scrollbar = self.page.scroll.verticalScrollBar()
+        for widget in (self.page.day_details, self.page.comparison):
+            with self.subTest(widget=type(widget).__name__):
+                scrollbar.setValue(scrollbar.maximum())
+                initial = scrollbar.value()
+                position = QPoint(10, 10)
+                event = QWheelEvent(
+                    QPointF(position), QPointF(widget.viewport().mapToGlobal(position)),
+                    QPoint(0, 0), QPoint(0, 120), Qt.NoButton, Qt.NoModifier,
+                    Qt.NoScrollPhase, False,
+                )
+                self.app.sendEvent(widget.viewport(), event)
+                self.app.processEvents()
+                self.assertLess(scrollbar.value(), initial)
+                self.assertEqual(widget.verticalScrollBar().maximum(), 0)
+
+    def test_wrapped_day_details_expand_without_an_internal_scrollbar(self):
+        from helink.ui.widgets.aircraft_day_details import AircraftDayDetails
+
+        details = AircraftDayDetails()
+        self.addCleanup(details.deleteLater)
+        self.addCleanup(details.close)
+        details.resize(700, 40)
+        text = 'Flight details ' * 30 + '\nTOTAL'
+        details.show_message(text)
+        details.show()
+        for _ in range(3):
+            self.app.processEvents()
+        original_height = details.height()
+        details.resize(280, original_height)
+        for _ in range(3):
+            self.app.processEvents()
+        self.assertGreater(details.height(), original_height)
+        self.assertEqual(details.verticalScrollBar().maximum(), 0)
+        self.assertEqual(details.toPlainText(), text)
 
     def test_aircraft_checkboxes_stay_open_for_multiple_selections(self):
         selector = self.page.aircraft_selector
@@ -369,6 +735,24 @@ class FleetAnalysisNavigationTests(TrendFixture, unittest.TestCase):
         navigation.back_to_aircraft()
         self.assertEqual(view.display_flight_list.call_count, 2)
 
+    def test_individual_analysis_navigation_returns_to_flights_but_fleet_returns_to_dashboard(self):
+        view = Mock()
+        navigation = NavigationController()
+        navigation.attach_view(view)
+        navigation.show_aircraft_analysis('b')
+        view.display_fleet_analysis.assert_called_once_with('b', allow_comparison=False)
+        self.assertEqual(navigation.current_aircraft, 'b')
+        navigation.back_from_analysis()
+        view.display_flight_list.assert_called_once_with('b')
+        view.display_dashboard.assert_not_called()
+        navigation.show_fleet_analysis('a')
+        navigation.back_from_analysis()
+        view.display_dashboard.assert_called_once_with()
+        self.assertIsNone(navigation.current_aircraft)
+        view.reset_mock()
+        navigation.show_aircraft_analysis(None)
+        view.display_fleet_analysis.assert_not_called()
+
     def test_main_window_connects_new_page_without_changing_flight_navigation(self):
         from helink.ui.main_window import MainWindow
 
@@ -396,6 +780,35 @@ class FleetAnalysisNavigationTests(TrendFixture, unittest.TestCase):
         window.fleet_analysis.view_flights.click()
         self.assertIs(window.stack.currentWidget(), window.flight_list)
         self.assertEqual(window.flight_list.aid, 'a')
+        existing_analysis = window.fleet_analysis
+        existing_page_count = window.stack.count()
+        window.flight_list.date_filter.mode.setCurrentIndex(1)
+        window.flight_list.date_filter.start_edit.setDate(QDate(2026, 9, 1))
+        window.flight_list.date_filter.apply()
+        window.flight_list.analysis_button.click()
+        self.assertIs(window.stack.currentWidget(), existing_analysis)
+        self.assertEqual(window.stack.count(), existing_page_count)
+        self.assertTrue(existing_analysis.aircraft_selector.isHidden())
+        self.assertEqual(existing_analysis._selected_aircraft_ids(), ('a',))
+        existing_analysis.back_button.click()
+        self.assertIs(window.stack.currentWidget(), window.flight_list)
+        self.assertEqual(window.flight_list.aid, 'a')
+        self.assertEqual(
+            window.flight_list.date_filter.date_range, ('2026-09-01', '2026-09-01'),
+        )
+        navigation.show_aircraft('b')
+        window.flight_list.analysis_button.click()
+        self.assertIs(window.stack.currentWidget(), existing_analysis)
+        self.assertEqual(existing_analysis._selected_aircraft_ids(), ('b',))
+        existing_analysis.back_button.click()
+        self.assertIs(window.stack.currentWidget(), window.flight_list)
+        self.assertEqual(window.flight_list.aid, 'b')
+        navigation.show_fleet_analysis()
+        self.assertIs(window.stack.currentWidget(), existing_analysis)
+        self.assertFalse(existing_analysis.aircraft_selector.isHidden())
+        self.assertEqual(existing_analysis._selected_aircraft_ids(), ('a', 'b', 'c'))
+        existing_analysis.back_button.click()
+        self.assertIs(window.stack.currentWidget(), window.dashboard)
 
 
 if __name__ == '__main__':

@@ -2,6 +2,8 @@
 
 import os
 import sqlite3
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -190,6 +192,47 @@ class FlightDateFilterTests(unittest.TestCase):
         self.assertEqual(self.received, [])
         self.assertEqual(self.button.date_range, (None, None))
 
+    def test_date_fields_have_a_valid_point_size_for_native_windows_controls(self):
+        self.button.show()
+        self.app.processEvents()
+        for field in (self.button.start_edit, self.button.end_edit):
+            field.ensurePolished()
+            self.assertGreater(field.font().pointSizeF(), 0)
+            self.assertTrue(field.calendarPopup())
+
+    @unittest.skipUnless(os.name == 'nt', 'Requires the native Windows Qt style')
+    def test_native_windows_date_filter_starts_without_font_size_warning(self):
+        script = """
+from PySide6.QtCore import qInstallMessageHandler
+from PySide6.QtWidgets import QApplication, QStyleFactory, QVBoxLayout, QWidget
+from helink.ui.theme import STYLE
+from helink.ui.widgets.flight_date_filter_button import FlightDateFilterButton
+
+app = QApplication([])
+style = next((name for name in QStyleFactory.keys()
+              if name.lower() in ('windows11', 'windowsvista')), 'Windows')
+app.setStyle(style)
+app.setStyleSheet(STYLE)
+messages = []
+def capture(kind, context, message):
+    if 'QFont::setPointSize' in message:
+        messages.append(message)
+previous = qInstallMessageHandler(capture)
+page = QWidget()
+layout = QVBoxLayout(page)
+layout.addWidget(FlightDateFilterButton())
+page.show()
+app.processEvents()
+page.close()
+qInstallMessageHandler(previous)
+assert not messages, messages
+"""
+        result = subprocess.run(
+            [sys.executable, '-c', script], capture_output=True, text=True,
+            timeout=20, env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'},
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_dropdown_opens_by_mouse_or_keyboard_and_closes_without_applying(self):
         self.button.show()
         self.app.processEvents()
@@ -264,6 +307,21 @@ class FlightListPageTests(FlightDatabaseFixture, unittest.TestCase):
         with patch.object(self.aircraft_controller, 'list_aircraft') as fleet_query:
             self.page.load('a')
         fleet_query.assert_not_called()
+
+    def test_analysis_button_emits_only_the_current_aircraft_and_is_disabled_if_missing(self):
+        requested = []
+        self.page.analysis_requested.connect(requested.append)
+        self.assertEqual(self.page.analysis_button.text(), 'Aircraft Analysis')
+        self.assertTrue(self.page.analysis_button.isEnabled())
+        self.page.analysis_button.click()
+        self.assertEqual(requested, ['a'])
+        self.page.load('b')
+        self.page.analysis_button.click()
+        self.assertEqual(requested, ['a', 'b'])
+        self.page.load('missing')
+        self.assertFalse(self.page.analysis_button.isEnabled())
+        self.page.analysis_button.click()
+        self.assertEqual(requested, ['a', 'b'])
 
     def test_filter_keeps_route_arrival_and_files_for_each_matching_flight(self):
         self.single_date()

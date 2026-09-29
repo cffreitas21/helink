@@ -1,5 +1,7 @@
 STYLE='''
 QWidget{font-family:Segoe UI,Arial;font-size:13px;color:#111827;background:#f1f5f9}
+/* Native Windows date controls need a point size; 9.75pt matches 13px at 96 DPI. */
+QDateEdit{font-size:9.75pt}
 QMainWindow{background:#f4f7fb} QFrame#sidebar{background:#0b1220;border:none}
 QLabel{background:transparent} QLabel#brand{font-size:19px;font-weight:700;color:#ffffff} QLabel#muted{color:#475569} QLabel#title{font-size:24px;font-weight:750;color:#0f172a}
 QPushButton{background:#0b1220;color:#ffffff;border:1px solid #0b1220;border-radius:8px;padding:9px 14px;font-weight:650} QPushButton:hover{background:#1e293b;border-color:#1e293b} QPushButton:pressed{background:#020617;border-color:#020617} QPushButton:focus{border:2px solid #64748b} QPushButton:disabled{background:#d1d5db;color:#4b5563;border-color:#d1d5db}
@@ -142,7 +144,7 @@ QWidget#aircraftSelectionContent QCheckBox{background:transparent;color:#1e293b;
 QWidget#aircraftSelectionContent QCheckBox::indicator{width:16px;height:16px;border:1px solid #94a3b8;border-radius:3px;background:#ffffff}
 QWidget#aircraftSelectionContent QCheckBox::indicator:checked{background:#2563eb;border:2px solid #1d4ed8}
 QLabel#fleetAnalysisTitle{color:#0f172a;font-size:15px;font-weight:750}
-QLabel#fleetAnalysisDay{color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;font-size:12px}
+QPlainTextEdit#fleetAnalysisDay{color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;font-size:12px}
 QTableWidget#fleetComparisonTable{background:#ffffff;alternate-background-color:#f8fafc;border:1px solid #d7e0eb;border-radius:7px;selection-background-color:#dbeafe;selection-color:#172033}
 QTableWidget#fleetComparisonTable::item{border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;padding:4px;color:#172033}
 QTableWidget#fleetComparisonTable QHeaderView::section{background:#e8eef6;color:#25344a;border:none;border-right:1px solid #d3dce8;border-bottom:1px solid #aebed2;padding:7px 8px;font-size:11px;font-weight:750}

@@ -1,17 +1,19 @@
 from colorsys import hls_to_rgb
 from datetime import date
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QHBoxLayout, QHeaderView, QLabel,
-    QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QApplication, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel, QLayout,
+    QMessageBox, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem,
+    QVBoxLayout, QWidget,
 )
 
 from helink.ui.telemetry_parameters import (
     OVERVIEW_TELEMETRY_PARAMETERS, TELEMETRY_PARAMETERS,
 )
 from helink.ui.widgets.aircraft_selection_button import AircraftSelectionButton
+from helink.ui.widgets.aircraft_day_details import AircraftDayDetails
 from helink.ui.widgets.aircraft_trend_plot import AircraftTrendPlot
 from helink.ui.widgets.card import Card
 from helink.ui.widgets.flight_date_filter_button import FlightDateFilterButton
@@ -44,18 +46,31 @@ class FleetAnalysisPage(QWidget):
         self.days = []
         self.colors = {}
         self._loading = False
+        self._allow_comparison = True
+        self._fixed_aircraft_id = None
         self._row_by_aircraft = {}
-        root = QVBoxLayout(self)
+        self._day_flight_cache = {}
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        self.scroll = QScrollArea()
+        self.scroll.setObjectName('fleetAnalysisScroll')
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.NoFrame)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.content = QWidget()
+        root = QVBoxLayout(self.content)
+        root.setSizeConstraint(QLayout.SetMinimumSize)
         root.setContentsMargins(24, 20, 24, 24)
         root.setSpacing(12)
         heading = QHBoxLayout()
-        back = QPushButton('\N{LEFTWARDS ARROW} Fleet')
-        back.setObjectName('secondary')
-        back.clicked.connect(self.back_requested)
-        heading.addWidget(back)
-        title = QLabel('Fleet Analysis')
-        title.setObjectName('title')
-        heading.addWidget(title)
+        self.back_button = QPushButton('\N{LEFTWARDS ARROW} Fleet')
+        self.back_button.setObjectName('secondary')
+        self.back_button.clicked.connect(self.back_requested)
+        heading.addWidget(self.back_button)
+        self.title = QLabel('Fleet Analysis')
+        self.title.setObjectName('title')
+        heading.addWidget(self.title)
         heading.addStretch()
         self.view_flights = QPushButton('View Flights')
         self.view_flights.clicked.connect(self._open_flights)
@@ -109,15 +124,15 @@ class FleetAnalysisPage(QWidget):
         chart.layout.addLayout(chart_heading)
         self.plot = AircraftTrendPlot()
         self.plot.day_selected.connect(self._show_day)
-        chart.layout.addWidget(self.plot, 1)
-        self.day_details = QLabel('Click a recorded day to inspect its values.')
-        self.day_details.setObjectName('fleetAnalysisDay')
-        self.day_details.setTextFormat(Qt.PlainText)
-        self.day_details.setWordWrap(True)
+        chart.layout.addWidget(self.plot)
+        self.day_details = AircraftDayDetails()
         chart.layout.addWidget(self.day_details)
-        root.addWidget(chart, 1)
+        root.addWidget(chart)
 
-        summary = Card('Period Comparison')
+        summary = Card()
+        self.comparison_title = QLabel('Period Comparison')
+        self.comparison_title.setStyleSheet('font-size:15px;font-weight:700')
+        summary.layout.addWidget(self.comparison_title)
         self.comparison = QTableWidget(0, 5)
         self.comparison.setObjectName('fleetComparisonTable')
         self.comparison.verticalHeader().hide()
@@ -128,13 +143,49 @@ class FleetAnalysisPage(QWidget):
         self.comparison.setSelectionMode(QAbstractItemView.SingleSelection)
         self.comparison.setAlternatingRowColors(True)
         self.comparison.setShowGrid(False)
+        self.comparison.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         summary.layout.addWidget(self.comparison)
         root.addWidget(summary)
+        root.addStretch()
+        self.scroll.setWidget(self.content)
+        page_layout.addWidget(self.scroll)
+        self._page_scroll_targets = (
+            self.plot, self.day_details.viewport(), self.comparison.viewport(),
+        )
+        for widget in self._page_scroll_targets:
+            widget.installEventFilter(self)
 
-    def load(self, aircraft_id=None):
+    def eventFilter(self, watched, event):
+        # Nested canvases and item views otherwise consume the wheel, even
+        # when their own scrollbars are disabled.
+        if event.type() == QEvent.Wheel and watched in self._page_scroll_targets:
+            QApplication.sendEvent(self.scroll.viewport(), event)
+            return True
+        return super().eventFilter(watched, event)
+
+    def load(self, aircraft_id=None, *, allow_comparison=True):
+        if not allow_comparison and not aircraft_id:
+            raise ValueError('An aircraft is required for individual analysis.')
         self._loading = True
         try:
-            self.aircraft = self.aircraft_controller.list_for_analysis()
+            self._allow_comparison = allow_comparison
+            self._fixed_aircraft_id = aircraft_id if not allow_comparison else None
+            self.title.setText('Fleet Analysis' if allow_comparison else 'Aircraft Analysis')
+            self.back_button.setText(
+                '\N{LEFTWARDS ARROW} Fleet' if allow_comparison
+                else '\N{LEFTWARDS ARROW} Flights'
+            )
+            self.comparison_title.setText(
+                'Period Comparison' if allow_comparison else 'Period Summary'
+            )
+            self.aircraft_selector.hidePopup()
+            self.aircraft_selector.setVisible(allow_comparison)
+            self.aircraft_selector.setEnabled(allow_comparison)
+            if allow_comparison:
+                self.aircraft = self.aircraft_controller.list_for_analysis()
+            else:
+                aircraft = self.aircraft_controller.get(aircraft_id)
+                self.aircraft = [aircraft] if aircraft is not None else []
             self.colors = {
                 item.id: _aircraft_color(index)
                 for index, item in enumerate(self.aircraft)
@@ -148,9 +199,20 @@ class FleetAnalysisPage(QWidget):
         finally:
             self._loading = False
         self._reload()
+        self.scroll.verticalScrollBar().setValue(0)
+
+    def _selected_aircraft_ids(self):
+        # Individual analysis is pinned to its aircraft, independently of
+        # the (hidden) comparison selector.
+        if not self._allow_comparison:
+            return tuple(
+                item.id for item in self.aircraft
+                if item.id == self._fixed_aircraft_id
+            )
+        return self.aircraft_selector.selected_ids()
 
     def _selected_aircraft(self):
-        selected = set(self.aircraft_selector.selected_ids())
+        selected = set(self._selected_aircraft_ids())
         return [item for item in self.aircraft if item.id in selected]
 
     def _parameter_metadata(self):
@@ -161,16 +223,17 @@ class FleetAnalysisPage(QWidget):
     def _reload(self, *_):
         if self._loading:
             return
+        self._day_flight_cache.clear()
         start, end = self.date_filter.date_range
         try:
             self.days = self.aircraft_controller.daily_parameter_trends(
-                self.aircraft_selector.selected_ids(),
+                self._selected_aircraft_ids(),
                 self.parameter.currentData(), start_date=start, end_date=end,
             )
         except Exception as error:
             self.days = []
             QMessageBox.warning(
-                self, 'Fleet Analysis', f'The recorded values could not be loaded:\n{error}',
+                self, self.title.text(), f'The recorded values could not be loaded:\n{error}',
             )
         if start is None:
             self.date_filter.set_available_dates(day.flight_date for day in self.days)
@@ -187,21 +250,23 @@ class FleetAnalysisPage(QWidget):
             f'{len(selected)} aircraft \N{MIDDLE DOT} '
             f'{len({day.flight_date for day in self.days})} recorded days'
         )
-        self.view_flights.setVisible(len(selected) == 1)
+        self.view_flights.setVisible(self._allow_comparison and len(selected) == 1)
         if len(selected) == 1:
             item = selected[0]
             self.context.setText(
                 f'Fleet Management / {item.registration} \N{MIDDLE DOT} '
                 f'{item.model} \N{MIDDLE DOT} SN {item.serial_number}'
             )
-        else:
+        elif self._allow_comparison:
             self.context.setText(
                 'Fleet Management / Compare aircraft using the same parameter, dates and units.'
             )
+        else:
+            self.context.setText('Fleet Management / Aircraft unavailable')
         self.plot.show_trends(
             self.days, selected, self.colors, label, unit, statistic,
         )
-        self.day_details.setText('Click a recorded day to inspect its values.')
+        self.day_details.reset()
         summary_field = 'maximum' if statistic == 'maximum' else 'average'
         caption = 'MAX' if summary_field == 'maximum' else 'AVG'
         summaries = self.aircraft_controller.trend_summaries(self.days, summary_field)
@@ -237,17 +302,37 @@ class FleetAnalysisPage(QWidget):
                     cell.setToolTip(date.fromisoformat(stamp).strftime('%d/%m/%Y'))
                 self.comparison.setItem(row, column, cell)
         self.comparison.setFixedHeight(
-            min(210, self.comparison.horizontalHeader().sizeHint().height()
-                + max(1, len(selected)) * 40 + 4)
+            self.comparison.horizontalHeader().sizeHint().height()
+            + max(1, len(selected)) * 40 + 4
         )
 
     def _show_day(self, day):
-        self.day_details.setText(self.plot.day_text(day).replace('\n', '  \N{MIDDLE DOT}  '))
+        if day.aircraft_id not in self._selected_aircraft_ids():
+            return
+        parameter, label, unit, _color = self._parameter_metadata()
+        cache_key = (day.aircraft_id, day.flight_date, parameter)
+        try:
+            if cache_key not in self._day_flight_cache:
+                self._day_flight_cache[cache_key] = (
+                    self.aircraft_controller.parameter_flights_for_day(
+                        day.aircraft_id, day.flight_date, parameter,
+                    )
+                )
+        except Exception as error:
+            self.day_details.show_message('The flight values for this day could not be loaded.')
+            QMessageBox.warning(
+                self, self.title.text(), f'The flight values could not be loaded:\n{error}',
+            )
+            return
+        aircraft = next(item for item in self.aircraft if item.id == day.aircraft_id)
+        self.day_details.show_day(
+            aircraft.registration, label, unit, day, self._day_flight_cache[cache_key],
+        )
         row = self._row_by_aircraft.get(day.aircraft_id)
         if row is not None:
             self.comparison.selectRow(row)
 
     def _open_flights(self):
-        selected = self.aircraft_selector.selected_ids()
+        selected = self._selected_aircraft_ids()
         if len(selected) == 1:
             self.flights_requested.emit(selected[0])

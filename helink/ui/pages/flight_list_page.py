@@ -25,6 +25,7 @@ class FlightListPage(QWidget):
     flight_selected = Signal(str)
     import_requested = Signal(str)
     back_requested = Signal()
+    analysis_requested = Signal(str)
 
     def __init__(self, aircraft_controller, flight_controller):
         super().__init__()
@@ -49,6 +50,15 @@ class FlightListPage(QWidget):
         self.title.setObjectName('title')
         heading.addWidget(self.title)
         heading.addStretch()
+
+        self.analysis_button = QPushButton('Aircraft Analysis')
+        self.analysis_button.setObjectName('secondary')
+        self.analysis_button.setToolTip('View parameter evolution for this aircraft')
+        self.analysis_button.setEnabled(False)
+        self.analysis_button.clicked.connect(
+            lambda: self.analysis_requested.emit(self.aid)
+        )
+        heading.addWidget(self.analysis_button)
 
         import_button = QPushButton('Import Files')
         import_button.clicked.connect(
@@ -148,6 +158,7 @@ class FlightListPage(QWidget):
             self.date_filter.reset(emit=False)
         self.aid = aircraft_id
         aircraft = self.aircraft_controller.get(aircraft_id)
+        self.analysis_button.setEnabled(aircraft is not None)
         if aircraft is None:
             self.title.setText('Aircraft unavailable')
             self.info.clear()
