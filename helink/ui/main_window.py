@@ -8,7 +8,7 @@ from PySide6.QtWidgets import *
 from helink.ui.dialogs import (
     AboutDialog, AddAircraftDialog, ImportSummaryDialog,
 )
-from helink.ui.pages import DashboardPage, FlightListPage, FlightDetailsPage
+from helink.ui.pages import DashboardPage, FlightListPage, FlightDetailsPage, FleetAnalysisPage
 from helink.ui.widgets import Sidebar
 from helink.ui.widgets.imported_files_button import FILE_TYPE_LABELS
 
@@ -59,6 +59,7 @@ class MainWindow(QMainWindow):
         root.addWidget(body, 1)
 
         self.dashboard = DashboardPage(self.aircraft_controller)
+        self.fleet_analysis = FleetAnalysisPage(self.aircraft_controller)
         self.flight_list = FlightListPage(
             self.aircraft_controller, self.flight_controller
         )
@@ -67,10 +68,19 @@ class MainWindow(QMainWindow):
             self.flight_controller,
             self.report_controller,
         )
-        for page in (self.dashboard, self.flight_list, self.flight_details):
+        for page in (self.dashboard, self.fleet_analysis, self.flight_list, self.flight_details):
             self.stack.addWidget(page)
 
         self.dashboard.aircraft_selected.connect(
+            self.navigation_controller.show_aircraft
+        )
+        self.dashboard.analysis_requested.connect(
+            self.navigation_controller.show_fleet_analysis
+        )
+        self.fleet_analysis.back_requested.connect(
+            self.navigation_controller.show_dashboard
+        )
+        self.fleet_analysis.flights_requested.connect(
             self.navigation_controller.show_aircraft
         )
         self.dashboard.add_requested.connect(self.add_aircraft)
@@ -116,6 +126,10 @@ class MainWindow(QMainWindow):
     def display_flight(self, flight_id):
         self.flight_details.load(flight_id)
         self.stack.setCurrentWidget(self.flight_details)
+
+    def display_fleet_analysis(self, aircraft_id=None):
+        self.fleet_analysis.load(aircraft_id)
+        self.stack.setCurrentWidget(self.fleet_analysis)
 
     def add_aircraft(self):
         dialog = AddAircraftDialog(self)

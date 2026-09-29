@@ -193,7 +193,7 @@ class ImportedFilesButton(QToolButton):
         self.setCursor(Qt.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.setToolTip(self._tooltip_text())
-        self._popover = ImportedFilesPopover(self.files, self)
+        self._popover = None
         self.clicked.connect(self._toggle_popover)
 
     def _tooltip_text(self):
@@ -211,6 +211,8 @@ class ImportedFilesButton(QToolButton):
         )
 
     def _toggle_popover(self):
+        if self._popover is None:
+            self._popover = ImportedFilesPopover(self.files, self)
         if self._popover.isVisible():
             self._popover.hide()
         else:

@@ -436,7 +436,13 @@ class TelemetrySynchronizationTests(unittest.TestCase):
                 selected_row = (count - 1) // 2
                 for row in range(count):
                     item = self.tab.instrument.item(row, 0)
-                    self.assertEqual(item.text(), f'11:00:{5 + row - selected_row:02d}')
+                    sample_index = 5 + row - selected_row
+                    expected = (
+                        f'11:00:{sample_index:02d}'
+                        if 0 <= sample_index < len(self.tab.data)
+                        else '\N{EM DASH}'
+                    )
+                    self.assertEqual(item.text(), expected)
                     self.assertEqual(
                         item.background().color().name(),
                         '#dbeafe' if row == selected_row else '#ffffff',

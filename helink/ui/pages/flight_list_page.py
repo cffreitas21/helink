@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from helink.services.airport_formatter import format_airport
 from helink.ui.widgets import (
-    FlightSelectionButton, ImportedFilesButton, SelectAllHeader,
+    FlightDateFilterButton, FlightSelectionButton, ImportedFilesButton, SelectAllHeader,
 )
 
 
@@ -33,6 +33,7 @@ class FlightListPage(QWidget):
         self.aid = None
         self.row_checkboxes = []
         self._selection_syncing = False
+        self._total_count = 0
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 20, 24, 24)
@@ -78,6 +79,9 @@ class FlightListPage(QWidget):
             self._sort_order_changed
         )
         toolbar.addWidget(self.sort_order)
+        self.date_filter = FlightDateFilterButton()
+        self.date_filter.range_changed.connect(self._reload_rows)
+        toolbar.addWidget(self.date_filter)
         toolbar.addStretch()
 
         self.selection_count = QLabel()
@@ -93,6 +97,11 @@ class FlightListPage(QWidget):
         self.delete_btn.clicked.connect(self.delete_selected)
         toolbar.addWidget(self.delete_btn)
         root.addLayout(toolbar)
+        self.filter_message = QLabel()
+        self.filter_message.setObjectName('muted')
+        self.filter_message.setAlignment(Qt.AlignCenter)
+        self.filter_message.hide()
+        root.addWidget(self.filter_message)
 
         self.table = QTableWidget(0, 8)
         self.table.setObjectName('flightTable')
@@ -134,33 +143,63 @@ class FlightListPage(QWidget):
         root.addWidget(self.table)
 
     def load(self, aircraft_id):
+        changing_aircraft = aircraft_id != self.aid
+        if changing_aircraft:
+            self.date_filter.reset(emit=False)
         self.aid = aircraft_id
-        aircraft = next(
-            item for item in self.aircraft_controller.list_aircraft()
-            if item.id == aircraft_id
-        )
+        aircraft = self.aircraft_controller.get(aircraft_id)
+        if aircraft is None:
+            self.title.setText('Aircraft unavailable')
+            self.info.clear()
+            self._total_count = 0
+            self._render_rows([])
+            return
+        self._total_count = aircraft.flight_count
         self.title.setText(aircraft.registration)
         self.info.setText(
             f'{aircraft.model} · SN {aircraft.serial_number} '
         )
 
-        descending = self.sort_order.currentData() == 'descending'
-        rows = sorted(
-            self.flight_controller.list_flights(aircraft_id),
-            key=lambda flight: (
-                str(flight.flight_date), str(flight.departure_time)
-            ),
-            reverse=descending,
-        )
-        count = len(rows)
-        self.flight_count.setText(
-            f'{count} imported flight' if count == 1
-            else f'{count} imported flights'
-        )
+        rows = self._reload_rows()
+        if changing_aircraft:
+            self.date_filter.set_available_dates(flight.flight_date for flight in rows)
 
+    def _reload_rows(self, *_):
+        if self.aid is None:
+            return []
+        start, end = self.date_filter.date_range
+        rows = self.flight_controller.list_flights(
+            self.aid, start_date=start, end_date=end,
+            descending=self.sort_order.currentData() == 'descending',
+        )
+        self._render_rows(rows)
+        return rows
+
+    def _render_rows(self, rows):
+        count = len(rows)
+        filtered = self.date_filter.date_range != (None, None)
+        if filtered:
+            self.flight_count.setText(f'{count} of {self._total_count} flights')
+        else:
+            self.flight_count.setText(
+                f'{count} imported flight' if count == 1
+                else f'{count} imported flights'
+            )
+        self.filter_message.setText(
+            'No flights match the selected dates.' if filtered
+            else 'No flights have been imported for this aircraft.'
+        )
+        self.filter_message.setVisible(count == 0)
+        self.table.setUpdatesEnabled(False)
+        try:
+            self._populate_rows(rows)
+        finally:
+            self.table.setUpdatesEnabled(True)
+
+    def _populate_rows(self, rows):
         self.row_checkboxes.clear()
         self.table.clearContents()
-        self.table.setRowCount(count)
+        self.table.setRowCount(len(rows))
 
         for row, flight in enumerate(rows):
             # Items underneath cell widgets keep the selection background continuous.
@@ -259,7 +298,7 @@ class FlightListPage(QWidget):
 
     def _sort_order_changed(self):
         if self.aid is not None:
-            self.load(self.aid)
+            self._reload_rows()
 
     def _toggle_all(self, checked):
         self._selection_syncing = True

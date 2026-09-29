@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog, QFrame, QHBoxLayout, QLabel, QMessageBox,
-    QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QToolButton, QVBoxLayout, QWidget,
 )
 
 from helink.ui.dialogs import DeleteAircraftDialog
@@ -18,6 +18,7 @@ FLEET_PARAMETER_KEYS = {
 
 class DashboardPage(QWidget):
     aircraft_selected = Signal(str)
+    analysis_requested = Signal(str)
     add_requested = Signal()
 
     def __init__(self, aircraft_controller):
@@ -33,6 +34,10 @@ class DashboardPage(QWidget):
         title.setObjectName('title')
         heading.addWidget(title)
         heading.addStretch()
+        analysis_button = QPushButton('Fleet Analysis')
+        analysis_button.setObjectName('secondary')
+        analysis_button.clicked.connect(lambda: self.analysis_requested.emit(''))
+        heading.addWidget(analysis_button)
         add_button = QPushButton('\N{FULLWIDTH PLUS SIGN} Add Aircraft')
         add_button.clicked.connect(self.add_requested)
         heading.addWidget(add_button)
@@ -117,8 +122,16 @@ class DashboardPage(QWidget):
         identity = QVBoxLayout(identity_panel)
         identity.setContentsMargins(0, 0, 0, 0)
         identity.setSpacing(2)
-        registration = QLabel(aircraft.registration)
+        registration = QToolButton()
+        registration.setText(aircraft.registration)
         registration.setObjectName('fleetRegistration')
+        registration.setCursor(Qt.PointingHandCursor)
+        registration.setAccessibleName(f'View parameter trends for {aircraft.registration}')
+        registration.setToolTip('Open daily parameter evolution and compare aircraft')
+        registration.clicked.connect(
+            lambda _, aircraft_id=aircraft.id:
+            self.analysis_requested.emit(aircraft_id)
+        )
         identity.addWidget(registration)
         details = QLabel(aircraft.model)
         details.setObjectName('fleetModel')

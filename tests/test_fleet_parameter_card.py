@@ -10,7 +10,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QScrollArea, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QScrollArea, QToolButton, QWidget
 
 from helink.models.aircraft import Aircraft
 from helink.ui.pages.dashboard_page import DashboardPage
@@ -132,7 +132,7 @@ class FleetParameterCardTests(unittest.TestCase):
         self.assertLess(cards[-1].geometry().right(), button.x())
         model = identity.findChild(QLabel, 'fleetModel')
         serial = identity.findChild(QLabel, 'fleetSerial')
-        registration = identity.findChild(QLabel, 'fleetRegistration')
+        registration = identity.findChild(QToolButton, 'fleetRegistration')
         count = identity.findChild(QLabel, 'fleetFlightCount')
         self.assertEqual(model.text(), 'Bell 505')
         self.assertEqual(serial.text(), 'SN 65000')

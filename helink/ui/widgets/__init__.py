@@ -1,5 +1,6 @@
 from helink.ui.widgets.card import Card
 from helink.ui.widgets.chart_filter_button import ChartFilterButton
+from helink.ui.widgets.flight_date_filter_button import FlightDateFilterButton
 from helink.ui.widgets.combined_telemetry_plot import CombinedTelemetryPlot
 from helink.ui.widgets.metric import Metric
 from helink.ui.widgets.overview_event_button import OverviewEventButton
@@ -18,5 +19,5 @@ from helink.ui.widgets.trigger_button import TriggerButton
 
 __all__ = [
     'Card', 'FleetParameterCard', 'FlightSelectionButton', 'ImportedFilesButton', 'ImportedFilesList', 'Metric', 'Plot', 'SelectAllHeader', 'Sidebar',
-    'ChartFilterButton', 'CombinedTelemetryPlot', 'OverviewEventButton', 'OverviewParameterButton', 'StateBadge', 'TriggerButton',
+    'ChartFilterButton', 'CombinedTelemetryPlot', 'FlightDateFilterButton', 'OverviewEventButton', 'OverviewParameterButton', 'StateBadge', 'TriggerButton',
 ]

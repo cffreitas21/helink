@@ -1,5 +1,6 @@
 from helink.ui.pages.dashboard_page import DashboardPage
 from helink.ui.pages.flight_list_page import FlightListPage
 from helink.ui.pages.flight_details_page import FlightDetailsPage
+from helink.ui.pages.fleet_analysis_page import FleetAnalysisPage
 
-__all__ = ['DashboardPage', 'FlightListPage', 'FlightDetailsPage']
+__all__ = ['DashboardPage', 'FlightListPage', 'FlightDetailsPage', 'FleetAnalysisPage']

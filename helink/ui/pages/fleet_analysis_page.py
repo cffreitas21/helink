@@ -1,0 +1,253 @@
+from colorsys import hls_to_rgb
+from datetime import date
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtWidgets import (
+    QAbstractItemView, QComboBox, QHBoxLayout, QHeaderView, QLabel,
+    QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+)
+
+from helink.ui.telemetry_parameters import (
+    OVERVIEW_TELEMETRY_PARAMETERS, TELEMETRY_PARAMETERS,
+)
+from helink.ui.widgets.aircraft_selection_button import AircraftSelectionButton
+from helink.ui.widgets.aircraft_trend_plot import AircraftTrendPlot
+from helink.ui.widgets.card import Card
+from helink.ui.widgets.flight_date_filter_button import FlightDateFilterButton
+
+
+PARAMETERS = TELEMETRY_PARAMETERS + OVERVIEW_TELEMETRY_PARAMETERS
+AIRCRAFT_COLORS = (
+    '#2563eb', '#c2410c', '#15803d', '#9333ea', '#be123c',
+    '#0891b2', '#a16207', '#475569', '#4f46e5', '#0f766e',
+)
+
+
+def _aircraft_color(index):
+    if index < len(AIRCRAFT_COLORS):
+        return AIRCRAFT_COLORS[index]
+    red, green, blue = hls_to_rgb((index * 0.61803398875) % 1, 0.38, 0.68)
+    return f'#{round(red * 255):02x}{round(green * 255):02x}{round(blue * 255):02x}'
+
+
+class FleetAnalysisPage(QWidget):
+    """Single-aircraft trends and like-for-like fleet parameter comparisons."""
+
+    back_requested = Signal()
+    flights_requested = Signal(str)
+
+    def __init__(self, aircraft_controller):
+        super().__init__()
+        self.aircraft_controller = aircraft_controller
+        self.aircraft = []
+        self.days = []
+        self.colors = {}
+        self._loading = False
+        self._row_by_aircraft = {}
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 24, 24)
+        root.setSpacing(12)
+        heading = QHBoxLayout()
+        back = QPushButton('\N{LEFTWARDS ARROW} Fleet')
+        back.setObjectName('secondary')
+        back.clicked.connect(self.back_requested)
+        heading.addWidget(back)
+        title = QLabel('Fleet Analysis')
+        title.setObjectName('title')
+        heading.addWidget(title)
+        heading.addStretch()
+        self.view_flights = QPushButton('View Flights')
+        self.view_flights.clicked.connect(self._open_flights)
+        heading.addWidget(self.view_flights)
+        root.addLayout(heading)
+        self.context = QLabel()
+        self.context.setObjectName('muted')
+        self.context.setTextFormat(Qt.PlainText)
+        self.context.setWordWrap(True)
+        root.addWidget(self.context)
+
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(10)
+        self.aircraft_selector = AircraftSelectionButton()
+        self.aircraft_selector.selection_changed.connect(self._reload)
+        toolbar.addWidget(self.aircraft_selector)
+        toolbar.addWidget(QLabel('Parameter'))
+        self.parameter = QComboBox()
+        self.parameter.setObjectName('fleetAnalysisFilter')
+        self.parameter.setAccessibleName('Select sensor for daily analysis')
+        for key, label, unit, _ in PARAMETERS:
+            self.parameter.addItem(f'{label} ({unit})', key)
+        self.parameter.setCurrentIndex(self.parameter.findData('itt'))
+        self.parameter.setMinimumWidth(220)
+        self.parameter.currentIndexChanged.connect(self._reload)
+        toolbar.addWidget(self.parameter, 1)
+        self.statistic = QComboBox()
+        self.statistic.setObjectName('fleetAnalysisFilter')
+        self.statistic.setAccessibleName('Choose daily statistic')
+        for label, key in (
+            ('Daily AVG', 'average'), ('Daily MAX', 'maximum'), ('AVG and MAX', 'both'),
+        ):
+            self.statistic.addItem(label, key)
+        self.statistic.setMinimumWidth(160)
+        self.statistic.currentIndexChanged.connect(self._render)
+        toolbar.addWidget(self.statistic)
+        self.date_filter = FlightDateFilterButton()
+        self.date_filter.range_changed.connect(self._reload)
+        toolbar.addWidget(self.date_filter)
+        root.addLayout(toolbar)
+
+        chart = Card()
+        chart_heading = QHBoxLayout()
+        self.chart_title = QLabel('Daily Parameter Evolution')
+        self.chart_title.setObjectName('fleetAnalysisTitle')
+        chart_heading.addWidget(self.chart_title)
+        chart_heading.addStretch()
+        self.coverage = QLabel()
+        self.coverage.setObjectName('muted')
+        chart_heading.addWidget(self.coverage)
+        chart.layout.addLayout(chart_heading)
+        self.plot = AircraftTrendPlot()
+        self.plot.day_selected.connect(self._show_day)
+        chart.layout.addWidget(self.plot, 1)
+        self.day_details = QLabel('Click a recorded day to inspect its values.')
+        self.day_details.setObjectName('fleetAnalysisDay')
+        self.day_details.setTextFormat(Qt.PlainText)
+        self.day_details.setWordWrap(True)
+        chart.layout.addWidget(self.day_details)
+        root.addWidget(chart, 1)
+
+        summary = Card('Period Comparison')
+        self.comparison = QTableWidget(0, 5)
+        self.comparison.setObjectName('fleetComparisonTable')
+        self.comparison.verticalHeader().hide()
+        self.comparison.verticalHeader().setDefaultSectionSize(40)
+        self.comparison.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.comparison.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.comparison.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.comparison.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.comparison.setAlternatingRowColors(True)
+        self.comparison.setShowGrid(False)
+        summary.layout.addWidget(self.comparison)
+        root.addWidget(summary)
+
+    def load(self, aircraft_id=None):
+        self._loading = True
+        try:
+            self.aircraft = self.aircraft_controller.list_for_analysis()
+            self.colors = {
+                item.id: _aircraft_color(index)
+                for index, item in enumerate(self.aircraft)
+            }
+            selected = [
+                item.id for item in self.aircraft
+                if not aircraft_id or item.id == aircraft_id
+            ]
+            self.date_filter.reset(emit=False)
+            self.aircraft_selector.set_aircraft(self.aircraft, selected, self.colors)
+        finally:
+            self._loading = False
+        self._reload()
+
+    def _selected_aircraft(self):
+        selected = set(self.aircraft_selector.selected_ids())
+        return [item for item in self.aircraft if item.id in selected]
+
+    def _parameter_metadata(self):
+        return next(
+            item for item in PARAMETERS if item[0] == self.parameter.currentData()
+        )
+
+    def _reload(self, *_):
+        if self._loading:
+            return
+        start, end = self.date_filter.date_range
+        try:
+            self.days = self.aircraft_controller.daily_parameter_trends(
+                self.aircraft_selector.selected_ids(),
+                self.parameter.currentData(), start_date=start, end_date=end,
+            )
+        except Exception as error:
+            self.days = []
+            QMessageBox.warning(
+                self, 'Fleet Analysis', f'The recorded values could not be loaded:\n{error}',
+            )
+        if start is None:
+            self.date_filter.set_available_dates(day.flight_date for day in self.days)
+        self._render()
+
+    def _render(self, *_):
+        if self._loading:
+            return
+        selected = self._selected_aircraft()
+        _, label, unit, _color = self._parameter_metadata()
+        statistic = self.statistic.currentData()
+        self.chart_title.setText(f'{label} - Daily Evolution')
+        self.coverage.setText(
+            f'{len(selected)} aircraft \N{MIDDLE DOT} '
+            f'{len({day.flight_date for day in self.days})} recorded days'
+        )
+        self.view_flights.setVisible(len(selected) == 1)
+        if len(selected) == 1:
+            item = selected[0]
+            self.context.setText(
+                f'Fleet Management / {item.registration} \N{MIDDLE DOT} '
+                f'{item.model} \N{MIDDLE DOT} SN {item.serial_number}'
+            )
+        else:
+            self.context.setText(
+                'Fleet Management / Compare aircraft using the same parameter, dates and units.'
+            )
+        self.plot.show_trends(
+            self.days, selected, self.colors, label, unit, statistic,
+        )
+        self.day_details.setText('Click a recorded day to inspect its values.')
+        summary_field = 'maximum' if statistic == 'maximum' else 'average'
+        caption = 'MAX' if summary_field == 'maximum' else 'AVG'
+        summaries = self.aircraft_controller.trend_summaries(self.days, summary_field)
+        self.comparison.setHorizontalHeaderLabels((
+            'AIRCRAFT', 'RECORDED DAYS', f'FIRST {caption}\n({unit})',
+            f'LATEST {caption}\n({unit})', f'PEAK MAX\n({unit})',
+        ))
+        self._row_by_aircraft = {}
+        self.comparison.setRowCount(len(selected))
+        for row, item in enumerate(selected):
+            self._row_by_aircraft[item.id] = row
+            result = summaries.get(item.id)
+            texts = (
+                item.registration,
+                str(result.day_count) if result else '0',
+                f'{result.first_value:.1f}' if result else '\N{EM DASH}',
+                f'{result.last_value:.1f}' if result else '\N{EM DASH}',
+                f'{result.maximum:.1f}' if result else '\N{EM DASH}',
+            )
+            for column, text in enumerate(texts):
+                cell = QTableWidgetItem(text)
+                cell.setTextAlignment(Qt.AlignCenter)
+                cell.setData(Qt.UserRole, item.id)
+                if column == 0:
+                    chip = QPixmap(10, 10)
+                    chip.fill(QColor(self.colors[item.id]))
+                    cell.setData(Qt.DecorationRole, chip)
+                    cell.setToolTip(f'{item.model} - SN {item.serial_number}')
+                elif not result:
+                    cell.setToolTip('No valid values for this parameter in the selected period.')
+                elif column in (2, 3):
+                    stamp = result.first_date if column == 2 else result.last_date
+                    cell.setToolTip(date.fromisoformat(stamp).strftime('%d/%m/%Y'))
+                self.comparison.setItem(row, column, cell)
+        self.comparison.setFixedHeight(
+            min(210, self.comparison.horizontalHeader().sizeHint().height()
+                + max(1, len(selected)) * 40 + 4)
+        )
+
+    def _show_day(self, day):
+        self.day_details.setText(self.plot.day_text(day).replace('\n', '  \N{MIDDLE DOT}  '))
+        row = self._row_by_aircraft.get(day.aircraft_id)
+        if row is not None:
+            self.comparison.selectRow(row)
+
+    def _open_flights(self):
+        selected = self.aircraft_selector.selected_ids()
+        if len(selected) == 1:
+            self.flights_requested.emit(selected[0])

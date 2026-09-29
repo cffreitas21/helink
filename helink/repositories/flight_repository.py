@@ -37,6 +37,35 @@ class FlightRepository:
             result.append(Flight.from_record(record))
         return result
 
+    def find_summaries(
+        self, aircraft_id=None, *, start_date=None, end_date=None, descending=True,
+    ):
+        """Read only list columns; leave reports and telemetry unloaded."""
+        query = (
+            'SELECT id, aircraft_id, flight_date, departure_time, arrival_time, '
+            'duration, origin, destination, imported_files, created_at FROM flights'
+        )
+        conditions, params = [], []
+        if aircraft_id is not None:
+            conditions.append('aircraft_id=?')
+            params.append(aircraft_id)
+        if start_date is not None:
+            conditions.append('flight_date>=?')
+            params.append(start_date)
+        if end_date is not None:
+            conditions.append('flight_date<=?')
+            params.append(end_date)
+        if conditions:
+            query += ' WHERE ' + ' AND '.join(conditions)
+        direction = 'DESC' if descending else 'ASC'
+        query += f' ORDER BY flight_date {direction}, departure_time {direction}, id'
+        result = []
+        for row in self.connection.execute(query, params):
+            record = dict(row)
+            record['imported_files'] = json.loads(record['imported_files'] or '[]')
+            result.append(Flight.from_record(record))
+        return result
+
     def find_metadata_by_id(self, flight_id):
         """Load only flight metadata, avoiding large telemetry collections."""
         row = self.connection.execute(

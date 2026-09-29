@@ -7,6 +7,7 @@ class MainView(Protocol):
     def display_dashboard(self): ...
     def display_flight_list(self, aircraft_id): ...
     def display_flight(self, flight_id): ...
+    def display_fleet_analysis(self, aircraft_id=None): ...
 
 
 class NavigationController:
@@ -32,6 +33,11 @@ class NavigationController:
     def show_flight(self, flight_id):
         if self.view:
             self.view.display_flight(flight_id)
+
+    def show_fleet_analysis(self, aircraft_id=None):
+        self.current_aircraft = aircraft_id or None
+        if self.view:
+            self.view.display_fleet_analysis(aircraft_id or None)
 
     def back_to_aircraft(self):
         if self.current_aircraft:
