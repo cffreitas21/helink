@@ -5,7 +5,7 @@ from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel, QLayout,
-    QMessageBox, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem,
+    QMessageBox, QPushButton, QScrollArea, QSpinBox, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 
@@ -115,6 +115,25 @@ class FleetAnalysisPage(QWidget):
         self.date_filter = FlightDateFilterButton()
         self.date_filter.range_changed.connect(self._reload)
         toolbar.addWidget(self.date_filter)
+        minimum_label = QLabel('Min. duration')
+        self.minimum_minutes = QSpinBox()
+        self.minimum_minutes.setObjectName('fleetMinimumDuration')
+        self.minimum_minutes.setAccessibleName('Minimum flight duration in minutes')
+        self.minimum_minutes.setToolTip(
+            'Exclude shorter flights from the chart and daily totals. '
+            '0 min includes all flights. Flights without a calculable duration '
+            'are excluded when a minimum is set.'
+        )
+        self.minimum_minutes.setRange(0, 1440)
+        self.minimum_minutes.setSingleStep(1)
+        self.minimum_minutes.setSuffix(' min')
+        self.minimum_minutes.setFixedWidth(108)
+        self.minimum_minutes.setKeyboardTracking(False)
+        self.minimum_minutes.setAccelerated(True)
+        self.minimum_minutes.valueChanged.connect(self._reload)
+        minimum_label.setBuddy(self.minimum_minutes)
+        toolbar.addWidget(minimum_label)
+        toolbar.addWidget(self.minimum_minutes)
         root.addLayout(toolbar)
 
         chart = Card()
@@ -247,6 +266,7 @@ class FleetAnalysisPage(QWidget):
         if self._day_task is not None:
             self._day_task.cancel()
         start, end = self.date_filter.date_range
+        minimum = self.minimum_minutes.value()
         if preloaded_days is not None:
             self.days = preloaded_days
             self.date_filter.set_available_dates(day.flight_date for day in self.days)
@@ -276,6 +296,7 @@ class FleetAnalysisPage(QWidget):
             self._query_task = self.aircraft_controller.request(
                 'daily_parameter_trends', self._selected_aircraft_ids(),
                 self.parameter.currentData(), start_date=start, end_date=end,
+                minimum_minutes=minimum,
                 on_result=received, on_error=failed,
             )
             return
@@ -283,6 +304,7 @@ class FleetAnalysisPage(QWidget):
             self.days = self.aircraft_controller.daily_parameter_trends(
                 self._selected_aircraft_ids(),
                 self.parameter.currentData(), start_date=start, end_date=end,
+                minimum_minutes=minimum,
             )
         except Exception as error:
             self.days = []
@@ -300,10 +322,16 @@ class FleetAnalysisPage(QWidget):
         _, label, unit, _color = self._parameter_metadata()
         statistic = self.statistic.currentData()
         self.chart_title.setText(f'{label} - Daily Evolution')
-        self.coverage.setText(
+        day_count = len({day.flight_date for day in self.days})
+        coverage = (
             f'{len(selected)} aircraft \N{MIDDLE DOT} '
-            f'{len({day.flight_date for day in self.days})} recorded days'
+            f'{day_count} recorded {"day" if day_count == 1 else "days"}'
         )
+        if self.minimum_minutes.value():
+            coverage += (
+                f' \N{MIDDLE DOT} minimum {self.minimum_minutes.value()} min'
+            )
+        self.coverage.setText(coverage)
         self.view_flights.setVisible(self._allow_comparison and len(selected) == 1)
         if len(selected) == 1:
             item = selected[0]
@@ -319,6 +347,11 @@ class FleetAnalysisPage(QWidget):
             self.context.setText('Fleet Management / Aircraft unavailable')
         self.plot.show_trends(
             self.days, selected, self.colors, label, unit, statistic,
+            empty_message=(
+                'No recorded values match this parameter, date range and '
+                'minimum flight duration.'
+                if self.minimum_minutes.value() else None
+            ),
         )
         self.day_details.reset()
         summary_field = 'maximum' if statistic == 'maximum' else 'average'
@@ -364,7 +397,8 @@ class FleetAnalysisPage(QWidget):
         if day.aircraft_id not in self._selected_aircraft_ids():
             return
         parameter, label, unit, _color = self._parameter_metadata()
-        cache_key = (day.aircraft_id, day.flight_date, parameter)
+        minimum = self.minimum_minutes.value()
+        cache_key = (day.aircraft_id, day.flight_date, parameter, minimum)
         if self.aircraft_controller.tasks is not None and cache_key not in self._day_flight_cache:
             self._day_token += 1
             token = self._day_token
@@ -384,6 +418,7 @@ class FleetAnalysisPage(QWidget):
 
             self._day_task = self.aircraft_controller.request(
                 'parameter_flights_for_day', day.aircraft_id, day.flight_date, parameter,
+                minimum_minutes=minimum,
                 on_result=received, on_error=failed,
             )
             return
@@ -392,6 +427,7 @@ class FleetAnalysisPage(QWidget):
                 self._day_flight_cache[cache_key] = (
                     self.aircraft_controller.parameter_flights_for_day(
                         day.aircraft_id, day.flight_date, parameter,
+                        minimum_minutes=minimum,
                     )
                 )
         except Exception as error:

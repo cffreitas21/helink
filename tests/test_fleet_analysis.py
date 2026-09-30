@@ -83,6 +83,152 @@ class TrendFixture:
 
 
 class DailyTrendQueryTests(TrendFixture, unittest.TestCase):
+    def set_recorded_durations(self):
+        self.connection.executemany(
+            'UPDATE flights SET arrival_time=?, duration=? WHERE id=?',
+            (
+                ('08:05:00', '5 min', 'a1'),
+                ('14:30:00', '30 min', 'a2'),
+                ('08:15:00', '15 min', 'a3'),
+                ('08:06:00', '6 min', 'a4'),
+                ('08:30:00', '30 min', 'b1'),
+                ('08:10:00', '10 min', 'b2'),
+            ),
+        )
+
+    def test_minimum_duration_filters_before_daily_aggregation_and_breakdown(self):
+        self.set_recorded_durations()
+        traced = []
+        self.connection.set_trace_callback(traced.append)
+        days = self.controller.daily_parameter_trends(
+            ('a', 'b'), 'eng_ot', minimum_minutes=10,
+        )
+        self.assertEqual(len(traced), 1)
+        self.assertEqual(
+            [(day.aircraft_id, day.flight_date) for day in days],
+            [('a', '2026-09-01'), ('b', '2026-09-01'),
+             ('a', '2026-09-10'), ('b', '2026-09-10')],
+        )
+        self.assertEqual((days[0].average, days[0].maximum), (100, 100))
+        self.assertEqual((days[0].flight_count, days[0].sample_count), (1, 3))
+        flights = self.controller.parameter_flights_for_day(
+            'a', '2026-09-01', 'eng_ot', minimum_minutes=10,
+        )
+        self.assertEqual([flight.flight_id for flight in flights], ['a2'])
+        self.assertEqual(
+            [flight.flight_id for flight in self.controller.parameter_flights_for_day(
+                'a', '2026-09-01', 'eng_ot', minimum_minutes=0,
+            )],
+            ['a1', 'a2'],
+        )
+        fifteen = self.controller.daily_parameter_trends(
+            ('a', 'b'), 'eng_ot', minimum_minutes=15,
+        )
+        self.assertEqual(
+            [(day.aircraft_id, day.flight_date) for day in fifteen],
+            [('a', '2026-09-01'), ('b', '2026-09-01'), ('a', '2026-09-10')],
+        )
+
+    def test_hour_and_minute_thresholds_are_inclusive(self):
+        self.connection.executemany(
+            'INSERT INTO flights(id,aircraft_id,flight_date,departure_time,'
+            'arrival_time,duration) VALUES(?,?,?,?,?,?)',
+            (
+                ('long', 'a', '2026-09-20', '09:00:00', '10:05:00', '1h 5m'),
+                ('hour', 'a', '2026-09-20', '11:00:00', '12:00:00', '1h'),
+                ('two_hours', 'a', '2026-09-20', '13:00:00', '15:00:00', '2h'),
+            ),
+        )
+        self.connection.executemany(
+            "INSERT INTO engine_data(flight_id,seq,eng_ot) VALUES(?,0,?)",
+            (('long', 120), ('hour', 90), ('two_hours', 150)),
+        )
+        at_sixty = self.controller.daily_parameter_trends(
+            ('a',), 'eng_ot', minimum_minutes=60,
+        )
+        self.assertEqual(at_sixty[0].flight_count, 3)
+        at_sixty_five = self.controller.daily_parameter_trends(
+            ('a',), 'eng_ot', minimum_minutes=65,
+        )
+        self.assertEqual(at_sixty_five[0].flight_count, 2)
+        self.assertEqual(at_sixty_five[0].average, 135)
+        self.assertEqual(
+            [flight.flight_id for flight in self.controller.parameter_flights_for_day(
+                'a', '2026-09-20', 'eng_ot', minimum_minutes=65,
+            )],
+            ['long', 'two_hours'],
+        )
+        self.assertEqual(
+            self.controller.daily_parameter_trends(
+                ('a',), 'eng_ot', minimum_minutes=121,
+            ),
+            [],
+        )
+
+    def test_clock_fallback_handles_midnight_and_unknown_duration(self):
+        self.connection.execute(
+            "UPDATE flights SET departure_time='23:55:00', arrival_time='00:05:00',"
+            " duration='Unable to calculate' WHERE id='a1'"
+        )
+        included = self.controller.daily_parameter_trends(
+            ('a',), 'eng_ot', minimum_minutes=10,
+        )
+        self.assertEqual([day.flight_date for day in included], ['2026-09-01'])
+        self.assertEqual(included[0].average, 80)
+        self.assertEqual(
+            self.controller.daily_parameter_trends(
+                ('a',), 'eng_ot', minimum_minutes=11,
+            ),
+            [],
+        )
+        self.connection.execute(
+            "UPDATE flights SET departure_time=NULL, arrival_time=NULL "
+            "WHERE id='a1'"
+        )
+        self.assertEqual(
+            self.controller.daily_parameter_trends(
+                ('a',), 'eng_ot', minimum_minutes=1,
+            ),
+            [],
+        )
+        self.assertEqual(len(self.controller.daily_parameter_trends(('a',), 'eng_ot')), 2)
+
+    def test_duration_filter_also_applies_to_gps_and_keeps_valid_zero(self):
+        self.set_recorded_durations()
+        self.assertEqual(
+            self.controller.daily_parameter_trends(
+                ('a',), 'ias', minimum_minutes=6,
+            )[0].flight_date,
+            '2026-09-15',
+        )
+        self.assertEqual(
+            self.controller.daily_parameter_trends(
+                ('a',), 'ias', minimum_minutes=7,
+            ),
+            [],
+        )
+        self.assertEqual(
+            self.controller.daily_parameter_trends(
+                ('a',), 'ias', minimum_minutes=0,
+            )[0].average,
+            120,
+        )
+
+    def test_invalid_duration_is_rejected_before_any_query(self):
+        traced = []
+        self.connection.set_trace_callback(traced.append)
+        for value in (-1, 2.5, True, 'ten'):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    self.controller.daily_parameter_trends(
+                        ('a',), 'eng_ot', minimum_minutes=value,
+                    )
+                with self.assertRaises(ValueError):
+                    self.controller.parameter_flights_for_day(
+                        'a', '2026-09-01', 'eng_ot', minimum_minutes=value,
+                    )
+        self.assertEqual(traced, [])
+
     def test_multiple_flights_on_a_day_use_sample_weighted_average(self):
         queries = []
         self.connection.set_trace_callback(queries.append)
@@ -251,6 +397,79 @@ class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
         self.assertIn('\u00b0C', self.page.plot.ax.get_ylabel())
         _, _, dates, _ = self.page.plot.series[0]
         self.assertEqual(dates[1] - dates[0], 9)
+
+    def test_minute_control_updates_chart_totals_and_flight_breakdown(self):
+        self.connection.executemany(
+            'UPDATE flights SET arrival_time=?, duration=? WHERE id=?',
+            (
+                ('08:05:00', '5 min', 'a1'),
+                ('14:30:00', '30 min', 'a2'),
+                ('08:15:00', '15 min', 'a3'),
+            ),
+        )
+        self.assertEqual(self.page.minimum_minutes.value(), 0)
+        self.page.minimum_minutes.setValue(10)
+        self.app.processEvents()
+        self.assertEqual(self.page.days[0].average, 100)
+        self.assertEqual(self.page.comparison.item(0, 2).text(), '100.0')
+        self.assertIn('minimum 10 min', self.page.coverage.text())
+        self.page._show_day(self.page.days[0])
+        detail = self.page.day_details.toPlainText()
+        self.assertIn('14:00:00', detail)
+        self.assertNotIn('08:00:00', detail)
+        self.assertIn('TOTAL', detail)
+        self.page.minimum_minutes.setValue(0)
+        self.assertEqual(self.page.days[0].average, 95)
+        self.assertEqual(self.page.comparison.item(0, 2).text(), '95.0')
+
+    def test_typed_minimum_commits_once_and_empty_filter_is_explained(self):
+        self.connection.execute(
+            "UPDATE flights SET duration='5 min' WHERE id='a1'"
+        )
+        with patch.object(
+            self.controller, 'daily_parameter_trends',
+            wraps=self.controller.daily_parameter_trends,
+        ) as trends:
+            editor = self.page.minimum_minutes.lineEdit()
+            editor.selectAll()
+            QTest.keyClicks(self.page.minimum_minutes, '17')
+            self.assertEqual(trends.call_count, 0)
+            QTest.keyClick(self.page.minimum_minutes, Qt.Key_Return)
+            self.assertEqual(trends.call_count, 1)
+        self.assertEqual(self.page.minimum_minutes.value(), 17)
+        self.assertEqual(self.page.days, [])
+        self.assertIn(
+            'minimum flight duration', self.page.plot.ax.texts[0].get_text(),
+        )
+        self.page.minimum_minutes.stepUp()
+        self.assertEqual(self.page.minimum_minutes.value(), 18)
+        self.page.minimum_minutes.stepDown()
+        self.assertEqual(self.page.minimum_minutes.value(), 17)
+
+    def test_comparison_filters_each_aircraft_before_period_summary(self):
+        self.connection.executemany(
+            'UPDATE flights SET arrival_time=?, duration=? WHERE id=?',
+            (
+                ('08:05:00', '5 min', 'a1'),
+                ('14:30:00', '30 min', 'a2'),
+                ('08:15:00', '15 min', 'a3'),
+                ('08:30:00', '30 min', 'b1'),
+                ('08:10:00', '10 min', 'b2'),
+            ),
+        )
+        self.page.load()
+        self.page.minimum_minutes.setValue(15)
+        self.assertEqual(
+            [(day.aircraft_id, day.flight_date) for day in self.page.days],
+            [('a', '2026-09-01'), ('b', '2026-09-01'),
+             ('a', '2026-09-10')],
+        )
+        self.assertEqual(self.page.comparison.item(0, 2).text(), '100.0')
+        self.assertEqual(self.page.comparison.item(1, 1).text(), '1')
+        self.assertEqual(len(self.page.plot.series), 2)
+        self.page.load('a', allow_comparison=False)
+        self.assertEqual(self.page.minimum_minutes.value(), 15)
+        self.assertEqual(len(self.page.days), 2)
 
     def test_initial_single_aircraft_analysis_fits_without_vertical_scrolling(self):
         for _ in range(3):

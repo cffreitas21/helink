@@ -135,6 +135,9 @@ QComboBox#flightSort:focus,QComboBox#flightDateFilter:focus{border:2px solid #25
 QComboBox#fleetAnalysisFilter{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650}
 QComboBox#fleetAnalysisFilter:hover{background:#f8fbff;border-color:#7aa7e8}
 QComboBox#fleetAnalysisFilter:focus{border:2px solid #2563eb}
+QSpinBox#fleetMinimumDuration{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 4px 6px 8px;font-weight:650}
+QSpinBox#fleetMinimumDuration:hover{background:#f8fbff;border-color:#7aa7e8}
+QSpinBox#fleetMinimumDuration:focus{border:2px solid #2563eb}
 QToolButton#fleetRegistration{background:transparent;color:#0f172a;font-size:18px;font-weight:800;border:none;padding:0px;text-align:left}
 QToolButton#fleetRegistration:hover{color:#2563eb;text-decoration:underline}
 QToolButton#fleetRegistration:focus{color:#2563eb}

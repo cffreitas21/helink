@@ -445,6 +445,42 @@ class BackgroundTasksTests(unittest.TestCase):
         self.wait_until(lambda: not window.tasks.busy)
         self.assertFalse(page.aircraft_selector.isHidden())
 
+    def test_minimum_flight_duration_is_applied_in_background_and_survives_navigation(self):
+        with self.database.connection:
+            self.database.connection.execute(
+                "UPDATE flights SET duration='2 min' WHERE id='f'"
+            )
+            self.database.connection.execute(
+                "INSERT INTO flights(id,aircraft_id,flight_date,departure_time,"
+                "arrival_time,duration) VALUES('long','a','2026-09-02',"
+                "'09:00:00','09:15:00','15 min')"
+            )
+            self.database.connection.execute(
+                "INSERT INTO engine_data(flight_id,seq,timestamp,itt) "
+                "VALUES('long',0,'09:00:00',850)"
+            )
+        window = self.window()
+        window.navigation_controller.show_aircraft_analysis('a')
+        self.wait_until(lambda: not window.tasks.busy)
+        page = window.fleet_analysis
+        self.assertEqual(len(page.days), 2)
+        page.minimum_minutes.setValue(10)
+        self.wait_until(lambda: not window.tasks.busy)
+        self.assertEqual([day.flight_date for day in page.days], ['2026-09-02'])
+        self.assertEqual(page.days[0].average, 850)
+        page._show_day(page.days[0])
+        self.wait_until(lambda: not window.tasks.busy)
+        self.assertIn('09:00:00', page.day_details.toPlainText())
+        window.navigation_controller.show_dashboard()
+        self.wait_until(lambda: not window.tasks.busy)
+        window.navigation_controller.show_aircraft_analysis('a')
+        self.wait_until(lambda: not window.tasks.busy)
+        self.assertEqual(page.minimum_minutes.value(), 10)
+        self.assertEqual([day.flight_date for day in page.days], ['2026-09-02'])
+        page.minimum_minutes.setValue(0)
+        self.wait_until(lambda: not window.tasks.busy)
+        self.assertEqual(len(page.days), 2)
+
     def test_pdf_export_in_worker_returns_file_and_updated_report_text(self):
         from helink.controllers.report_controller import ReportController
         from helink.services.report_service import ReportService

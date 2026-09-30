@@ -31,6 +31,7 @@ class AircraftTrendPlot(FigureCanvasQTAgg):
 
     def show_trends(
         self, days, aircraft, colors, label, unit, statistic='average',
+        empty_message=None,
     ):
         QToolTip.hideText()
         self.ax.clear()
@@ -71,7 +72,10 @@ class AircraftTrendPlot(FigureCanvasQTAgg):
         if not handles:
             self.ax.set_axis_off()
             message = (
-                'No recorded values for this parameter in the selected dates.'
+                (
+                    empty_message
+                    or 'No recorded values for this parameter in the selected dates.'
+                )
                 if aircraft else 'Select an aircraft to view its parameter evolution.'
             )
             self.ax.text(

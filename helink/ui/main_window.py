@@ -171,7 +171,11 @@ class MainWindow(QMainWindow):
         if self.tasks is not None:
             return self._request_page(
                 self.fleet_analysis, self.aircraft_controller, 'analysis_data',
-                (aircraft_id, allow_comparison, self.fleet_analysis.parameter.currentData()),
+                (
+                    aircraft_id, allow_comparison,
+                    self.fleet_analysis.parameter.currentData(),
+                    self.fleet_analysis.minimum_minutes.value(),
+                ),
                 lambda data: self.fleet_analysis.load(
                     aircraft_id, allow_comparison=allow_comparison, prepared=data,
                 ),

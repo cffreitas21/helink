@@ -14,6 +14,57 @@ TREND_PARAMETER_TABLES = {
     **dict.fromkeys(('ias', 'alt_ind'), 'gps_data'),
 }
 
+# The displayed flight duration is already rounded to whole minutes. Use that
+# value first so a flight shown as "10 min" passes a 10-minute filter. Older
+# records without a duration fall back to their departure/arrival clock times.
+# An unmeasurable duration does not pass an active minimum.
+_MINIMUM_DURATION_CONDITION = """
+f.id IN (
+    SELECT eligible.id FROM flights AS eligible
+    WHERE COALESCE(
+        CASE
+            WHEN LOWER(TRIM(eligible.duration)) GLOB '[0-9]* min'
+                THEN CAST(TRIM(eligible.duration) AS INTEGER)
+            WHEN LOWER(TRIM(eligible.duration)) GLOB '[0-9]*h*'
+                THEN CAST(eligible.duration AS INTEGER) * 60
+                     + CASE
+                           WHEN INSTR(LOWER(eligible.duration), 'm') > 0
+                           THEN CAST(SUBSTR(
+                               eligible.duration,
+                               INSTR(LOWER(eligible.duration), 'h') + 1
+                           ) AS INTEGER)
+                           ELSE 0
+                       END
+        END,
+        CASE
+            WHEN TIME(eligible.departure_time) IS NOT NULL
+             AND TIME(eligible.arrival_time) IS NOT NULL
+            THEN MAX(1, ROUND((
+                (
+                    CAST(STRFTIME('%s', '2000-01-01 ' || eligible.arrival_time)
+                        AS INTEGER)
+                    - CAST(STRFTIME('%s', '2000-01-01 ' || eligible.departure_time)
+                        AS INTEGER)
+                    + 86400
+                ) % 86400
+            ) / 60.0))
+        END
+    ) >= ?
+)
+"""
+
+
+def _validate_minimum_duration(minimum_minutes):
+    if (
+        isinstance(minimum_minutes, bool)
+        or not isinstance(minimum_minutes, int)
+        or minimum_minutes < 0
+    ):
+        raise ValueError(
+            'Minimum flight duration must be a non-negative number of minutes.'
+        )
+
+
 class AircraftRepository:
 
     def __init__(self,database):self.database=database
@@ -77,10 +128,12 @@ class AircraftRepository:
 
     def daily_parameter_trends(
         self, aircraft_ids, parameter, *, start_date=None, end_date=None,
+        minimum_minutes=0,
     ):
         """Aggregate only the chosen sensor, returning one row per aircraft/day."""
         if parameter not in TREND_PARAMETER_TABLES:
             raise ValueError('The selected parameter is not available for fleet analysis.')
+        _validate_minimum_duration(minimum_minutes)
         aircraft_ids = tuple(dict.fromkeys(aircraft_ids))
         if not aircraft_ids:
             return []
@@ -101,6 +154,9 @@ class AircraftRepository:
         if end_date:
             conditions.append('f.flight_date <= ?')
             values.append(end_date)
+        if minimum_minutes:
+            conditions.append(_MINIMUM_DURATION_CONDITION)
+            values.append(minimum_minutes)
         rows = self.connection.execute(
             f"""SELECT f.aircraft_id, f.flight_date,
                        AVG(d.{parameter}) AS average,
@@ -115,11 +171,20 @@ class AircraftRepository:
         )
         return [AircraftParameterDay.from_record(dict(row)) for row in rows]
 
-    def parameter_flights_for_day(self, aircraft_id, flight_date, parameter):
+    def parameter_flights_for_day(
+        self, aircraft_id, flight_date, parameter, *, minimum_minutes=0,
+    ):
         """Return every flight of a day, including those missing this sensor."""
         if parameter not in TREND_PARAMETER_TABLES:
             raise ValueError('The selected parameter is not available for fleet analysis.')
+        _validate_minimum_duration(minimum_minutes)
         table = TREND_PARAMETER_TABLES[parameter]
+        duration_clause = (
+            f' AND {_MINIMUM_DURATION_CONDITION}' if minimum_minutes else ''
+        )
+        values = [-float_info.max, float_info.max, aircraft_id, flight_date]
+        if minimum_minutes:
+            values.append(minimum_minutes)
         rows = self.connection.execute(
             f"""SELECT f.id AS flight_id, f.aircraft_id, f.flight_date,
                        f.departure_time, f.arrival_time,
@@ -131,10 +196,11 @@ class AircraftRepository:
                     AND typeof(d.{parameter}) IN ('real', 'integer')
                     AND d.{parameter} BETWEEN ? AND ?
                 WHERE f.aircraft_id=? AND f.flight_date=?
+                      {duration_clause}
                 GROUP BY f.id
                 ORDER BY CASE WHEN COALESCE(f.departure_time, '')='' THEN 1 ELSE 0 END,
                          f.departure_time, f.id""",
-            (-float_info.max, float_info.max, aircraft_id, flight_date),
+            values,
         )
         return [AircraftParameterFlight.from_record(dict(row)) for row in rows]
 

@@ -24,7 +24,7 @@ class AircraftController:
     def dashboard_data(self):
         return self.list_aircraft(), self.fleet_summaries()
 
-    def analysis_data(self, aircraft_id, allow_comparison, parameter):
+    def analysis_data(self, aircraft_id, allow_comparison, parameter, minimum_minutes=0):
         if allow_comparison:
             aircraft = self.list_for_analysis()
         else:
@@ -34,7 +34,9 @@ class AircraftController:
             item.id for item in aircraft
             if not aircraft_id or item.id == aircraft_id
         ]
-        return aircraft, self.daily_parameter_trends(selected, parameter)
+        return aircraft, self.daily_parameter_trends(
+            selected, parameter, minimum_minutes=minimum_minutes,
+        )
 
     def list_aircraft(self):
         return self.repository.find_all()
@@ -51,6 +53,7 @@ class AircraftController:
 
     def daily_parameter_trends(
         self, aircraft_ids, parameter, *, start_date=None, end_date=None,
+        minimum_minutes=0,
     ):
         start = date.fromisoformat(str(start_date)).isoformat() if start_date else None
         end = date.fromisoformat(str(end_date)).isoformat() if end_date else None
@@ -60,14 +63,19 @@ class AircraftController:
             aircraft_ids = (aircraft_ids,)
         return self.repository.daily_parameter_trends(
             aircraft_ids, parameter, start_date=start, end_date=end,
+            minimum_minutes=minimum_minutes,
         )
 
     def trend_summaries(self, days, statistic='average'):
         return summarise_aircraft_trends(days, statistic)
 
-    def parameter_flights_for_day(self, aircraft_id, flight_date, parameter):
+    def parameter_flights_for_day(
+        self, aircraft_id, flight_date, parameter, *, minimum_minutes=0,
+    ):
         day = date.fromisoformat(str(flight_date)).isoformat()
-        return self.repository.parameter_flights_for_day(aircraft_id, day, parameter)
+        return self.repository.parameter_flights_for_day(
+            aircraft_id, day, parameter, minimum_minutes=minimum_minutes,
+        )
 
     def add(self, registration, model, serial_number):
         return self.repository.add(registration, model, serial_number)
