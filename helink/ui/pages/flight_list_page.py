@@ -47,30 +47,35 @@ class FlightListPage(QWidget):
         root.setSpacing(12)
 
         heading = QHBoxLayout()
+        left_actions = QHBoxLayout()
         back = QPushButton('← Fleet')
         back.setObjectName('secondary')
         back.clicked.connect(self.back_requested)
-        heading.addWidget(back)
+        left_actions.addWidget(back)
 
         self.title = QLabel()
         self.title.setObjectName('title')
-        heading.addWidget(self.title)
-        heading.addStretch()
+        left_actions.addWidget(self.title)
+        left_actions.addStretch()
+        heading.addLayout(left_actions, 1)
 
         self.analysis_button = QPushButton('Aircraft Analysis')
-        self.analysis_button.setObjectName('secondary')
+        self.analysis_button.setObjectName('analysisNavigation')
         self.analysis_button.setToolTip('View parameter evolution for this aircraft')
         self.analysis_button.setEnabled(False)
         self.analysis_button.clicked.connect(
             lambda: self.analysis_requested.emit(self.aid)
         )
-        heading.addWidget(self.analysis_button)
+        heading.addWidget(self.analysis_button, 0, Qt.AlignCenter)
 
+        right_actions = QHBoxLayout()
+        right_actions.addStretch()
         import_button = QPushButton('Import Files')
         import_button.clicked.connect(
             lambda: self.import_requested.emit(self.aid)
         )
-        heading.addWidget(import_button)
+        right_actions.addWidget(import_button)
+        heading.addLayout(right_actions, 1)
         root.addLayout(heading)
 
         self.info = QLabel()
@@ -119,7 +124,7 @@ class FlightListPage(QWidget):
         self.filter_message.hide()
         root.addWidget(self.filter_message)
 
-        self.table = QTableWidget(0, 8)
+        self.table = QTableWidget(0, 9)
         self.table.setObjectName('flightTable')
 
         self.selection_header = SelectAllHeader(
@@ -131,20 +136,21 @@ class FlightListPage(QWidget):
         self.table.setHorizontalHeader(self.selection_header)
         self.table.setHorizontalHeaderLabels([
             '', 'FLIGHT DATE', 'DEPARTURE', 'ARRIVAL', 'DURATION',
-            'ROUTE', 'IMPORTED FILES', 'ACTIONS',
+            'ROUTE', 'EVENTS', 'IMPORTED FILES', 'ACTIONS',
         ])
 
         header = self.table.horizontalHeader()
-        for column in range(7):
+        for column in range(8):
             header.setSectionResizeMode(column, QHeaderView.Fixed)
-        header.setSectionResizeMode(7, QHeaderView.Stretch)
+        header.setSectionResizeMode(8, QHeaderView.Stretch)
         self.table.setColumnWidth(0, 54)
-        self.table.setColumnWidth(1, 145)
-        self.table.setColumnWidth(2, 110)
-        self.table.setColumnWidth(3, 110)
+        self.table.setColumnWidth(1, 135)
+        self.table.setColumnWidth(2, 100)
+        self.table.setColumnWidth(3, 100)
         self.table.setColumnWidth(4, 150)
-        self.table.setColumnWidth(5, 160)
-        self.table.setColumnWidth(6, 145)
+        self.table.setColumnWidth(5, 150)
+        self.table.setColumnWidth(6, 135)
+        self.table.setColumnWidth(7, 135)
         header.setMinimumSectionSize(42)
         header.setDefaultAlignment(Qt.AlignCenter)
 
@@ -310,7 +316,7 @@ class FlightListPage(QWidget):
 
         for row, flight in enumerate(rows, start):
             # Items underneath cell widgets keep the selection background continuous.
-            for column in (0, 6, 7):
+            for column in (0, 6, 7, 8):
                 self.table.setItem(row, column, QTableWidgetItem())
             checkbox = FlightSelectionButton()
             checkbox.setProperty('fid', flight.id)
@@ -350,6 +356,36 @@ class FlightListPage(QWidget):
                     item.setData(Qt.UserRole, flight.id)
                 self.table.setItem(row, column, item)
 
+            event_cell = QWidget()
+            event_cell.setObjectName('flightEventCell')
+            event_layout = QVBoxLayout(event_cell)
+            event_layout.setContentsMargins(4, 4, 4, 4)
+            event_layout.setSpacing(2)
+            event_layout.setAlignment(Qt.AlignCenter)
+            for count, label, object_name in (
+                (flight.exceedance_count, 'Exceedances', 'flightExceedanceBadge'),
+                (flight.miscmp_count, 'MISCMP-P', 'flightMiscmpBadge'),
+            ):
+                if not count:
+                    continue
+                badge = QLabel(f'{label} {count}')
+                badge.setObjectName(object_name)
+                badge.setAlignment(Qt.AlignCenter)
+                badge.setMinimumWidth(112)
+                badge.setFixedHeight(24)
+                badge.setToolTip(
+                    f'{count} recorded {label} SET '
+                    f'{"activation" if count == 1 else "activations"}.'
+                )
+                event_layout.addWidget(badge)
+            if event_layout.count() == 0:
+                none = QLabel('\N{EM DASH}')
+                none.setObjectName('muted')
+                none.setAlignment(Qt.AlignCenter)
+                none.setToolTip('No recorded exceedance or MISCMP-P SET activations.')
+                event_layout.addWidget(none)
+            self.table.setCellWidget(row, 6, event_cell)
+
             files_cell = QWidget()
             files_cell.setObjectName('flightCell')
             files_layout = QHBoxLayout(files_cell)
@@ -359,7 +395,7 @@ class FlightListPage(QWidget):
                 0,
                 Qt.AlignCenter,
             )
-            self.table.setCellWidget(row, 6, files_cell)
+            self.table.setCellWidget(row, 7, files_cell)
 
             actions = QWidget()
             actions.setObjectName('tableActions')
@@ -375,18 +411,10 @@ class FlightListPage(QWidget):
                 self.flight_selected.emit(flight_id)
             )
 
-            delete_button = QPushButton('Delete')
-            delete_button.setObjectName('tableDelete')
-            delete_button.setFixedSize(82, 36)
-            delete_button.clicked.connect(
-                lambda _, flight_id=flight.id: self.delete_one(flight_id)
-            )
-
             action_layout.addStretch()
             action_layout.addWidget(open_button)
-            action_layout.addWidget(delete_button)
             action_layout.addStretch()
-            self.table.setCellWidget(row, 7, actions)
+            self.table.setCellWidget(row, 8, actions)
 
         if finish:
             self.selection_header.set_check_enabled(bool(rows))
@@ -441,7 +469,7 @@ class FlightListPage(QWidget):
             action | QItemSelectionModel.Rows,
         )
 
-        for column in (0, 6, 7):
+        for column in (0, 6, 7, 8):
             widget = self.table.cellWidget(row, column)
             if widget is None:
                 continue
@@ -488,20 +516,6 @@ class FlightListPage(QWidget):
             for checkbox in self.row_checkboxes
             if checkbox.isChecked()
         ]
-
-    def delete_one(self, flight_id):
-        answer = QMessageBox.warning(
-            self,
-            'Delete flight',
-            """Permanently delete this flight and all associated data?
-
-This action cannot be undone.""",
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
-        )
-        if answer == QMessageBox.Yes:
-            self.flight_controller.delete(flight_id)
-            self.load(self.aid)
 
     def delete_selected(self):
         flight_ids = self.selected_ids()

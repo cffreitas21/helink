@@ -7,6 +7,10 @@ QLabel{background:transparent} QLabel#brand{font-size:19px;font-weight:700;color
 QPushButton{background:#0b1220;color:#ffffff;border:1px solid #0b1220;border-radius:8px;padding:9px 14px;font-weight:650} QPushButton:hover{background:#1e293b;border-color:#1e293b} QPushButton:pressed{background:#020617;border-color:#020617} QPushButton:focus{border:2px solid #64748b} QPushButton:disabled{background:#d1d5db;color:#4b5563;border-color:#d1d5db}
 QPushButton#nav{background:transparent;color:#dbe4f0;border:none;text-align:left;padding:11px 12px;border-radius:8px} QPushButton#nav:hover,QPushButton#nav:checked{background:#263449;color:#ffffff}
 QPushButton#secondary{background:#ffffff;color:#1e293b;border:1px solid #94a3b8} QPushButton#secondary:hover{background:#eaf0f6;border-color:#64748b} QPushButton#danger{background:#b91c1c;border-color:#b91c1c;color:#ffffff} QPushButton#danger:hover{background:#991b1b;border-color:#991b1b}
+QPushButton#analysisNavigation{background:#eff6ff;color:#1e3a8a;border:1px solid #60a5fa;border-radius:8px;padding:9px 15px;font-weight:750;text-align:center}
+QPushButton#analysisNavigation:hover{background:#dbeafe;border-color:#2563eb}
+QPushButton#analysisNavigation:focus{border:2px solid #2563eb}
+QPushButton#analysisNavigation:disabled{background:#f1f5f9;color:#94a3b8;border-color:#cbd5e1}
 QPushButton#deleteAircraft{background:#ffffff;color:#991b1b;border:1px solid #dc2626;padding:8px 11px} QPushButton#deleteAircraft:hover{background:#fee2e2;border-color:#b91c1c}
 QToolButton#fileList{background:#e2e8f0;color:#1e293b;border:1px solid #94a3b8;border-radius:7px;padding:7px 11px;font-weight:650} QToolButton#fileList:hover{background:#dbeafe;color:#1e3a8a;border-color:#60a5fa} QToolButton#fileList::menu-indicator{image:none}
 QMenuBar{background:#ffffff;color:#0f172a;border-bottom:1px solid #cbd5e1;padding:3px 8px} QMenuBar::item{background:transparent;padding:6px 12px;border-radius:5px} QMenuBar::item:selected{background:#dbeafe;color:#0f172a}
@@ -30,8 +34,6 @@ QTableWidget#flightTable QHeaderView::section{background:#e8eef6;color:#25344a;b
 QWidget#tableActions{background:transparent}
 QPushButton#tableAction{background:#0b1220;color:#ffffff;border:1px solid #0b1220;border-radius:7px;padding:7px 12px}
 QPushButton#tableAction:hover{background:#1e293b;border-color:#1e293b}
-QPushButton#tableDelete{background:#ffffff;color:#b91c1c;border:1px solid #dc2626;border-radius:7px;padding:7px 12px}
-QPushButton#tableDelete:hover{background:#fee2e2;color:#991b1b;border-color:#b91c1c}
 
 QLabel#overviewCaption{color:#64748b;font-size:10px;font-weight:750;letter-spacing:.5px}
 QLabel#overviewValue{color:#0f172a;font-size:16px;font-weight:750}
@@ -59,22 +61,13 @@ QToolButton#overviewParameter:hover{background:#eef6ff;border-color:#93b7ef}
 QToolButton#overviewParameter:focus{border:2px solid #2563eb}
 QToolButton#overviewParameter::menu-indicator{image:none}
 QLabel#overviewParameterTitle{color:#334155;font-size:11px;font-weight:750}
-QToolButton#overviewExceedances,QToolButton#overviewMiscmp{background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:0px}
-QToolButton#overviewExceedances[eventActive="true"]{background:#fff4e6;border:1px solid #e9a64d}
-QToolButton#overviewMiscmp[eventActive="true"]{background:#f3e8ff;border:1px solid #c084fc}
+QToolButton#overviewExceedances,QToolButton#overviewMiscmp{border-radius:7px;padding:2px 4px;font-size:11px;font-weight:750}
+QToolButton#overviewExceedances{background:#fee2e2;color:#991b1b;border:1px solid #ef9a9a}
+QToolButton#overviewMiscmp{background:#f3e8ff;color:#7e22ce;border:1px solid #c084fc}
 QToolButton#overviewExceedances:hover,QToolButton#overviewMiscmp:hover{border:1px solid #2563eb}
 QToolButton#overviewExceedances:focus,QToolButton#overviewMiscmp:focus{border:2px solid #2563eb}
 QToolButton#overviewExceedances::menu-indicator,QToolButton#overviewMiscmp::menu-indicator{image:none}
-QLabel#overviewEventValue{color:#475569;font-size:27px;font-weight:800}
-QLabel#overviewEventTitle{color:#334155;font-size:13px;font-weight:750}
-QLabel#overviewEventNote{color:#526175;font-size:10px}
-QToolButton#overviewExceedances QLabel#overviewEventNote{color:#475569;font-size:12px;font-weight:600}
-QToolButton#overviewMiscmp QLabel#overviewEventValue{font-size:22px}
-QToolButton#overviewMiscmp QLabel#overviewEventTitle{font-size:12px}
-QLabel#overviewEventArrow{color:#526175;font-size:16px}
-QToolButton#overviewExceedances[eventActive="true"] QLabel#overviewEventValue,QToolButton#overviewExceedances[eventActive="true"] QLabel#overviewEventTitle{color:#92400e}
-QToolButton#overviewMiscmp[eventActive="true"] QLabel#overviewEventValue,QToolButton#overviewMiscmp[eventActive="true"] QLabel#overviewEventTitle{color:#7e22ce}
-QToolButton#overviewExceedances:disabled QLabel,QToolButton#overviewMiscmp:disabled QLabel{color:#64748b}
+QLabel#overviewEventEmpty{color:#64748b;font-size:12px}
 QToolButton#eventTotal{background:#eef2f7;border:1px solid #cbd5e1;border-radius:8px}
 QToolButton#eventCas{background:#e8f1ff;border:1px solid #93b7ef;border-radius:8px}
 QToolButton#eventExceedance{background:#fff1e8;border:1px solid #f0ad75;border-radius:8px}
@@ -129,9 +122,9 @@ QLabel#fleetParameterStatistic{color:#64748b;font-size:10px;font-weight:800}
 
 QLabel#fleetFlightCount{color:#2563eb;font-size:10px;font-weight:750}
 
-QComboBox#flightSort,QComboBox#flightDateFilter,QComboBox#fleetDurationFilter{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650}
-QComboBox#flightSort:hover,QComboBox#flightDateFilter:hover,QComboBox#fleetDurationFilter:hover{background:#f8fbff;border-color:#7aa7e8}
-QComboBox#flightSort:focus,QComboBox#flightDateFilter:focus,QComboBox#fleetDurationFilter:focus{border:2px solid #2563eb}
+QComboBox#flightSort,QComboBox#fleetSort,QComboBox#flightDateFilter,QComboBox#fleetDurationFilter{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650}
+QComboBox#flightSort:hover,QComboBox#fleetSort:hover,QComboBox#flightDateFilter:hover,QComboBox#fleetDurationFilter:hover{background:#f8fbff;border-color:#7aa7e8}
+QComboBox#flightSort:focus,QComboBox#fleetSort:focus,QComboBox#flightDateFilter:focus,QComboBox#fleetDurationFilter:focus{border:2px solid #2563eb}
 QComboBox#fleetDurationFilter[filterActive="true"]{background:#eff6ff;border-color:#60a5fa;color:#1e3a8a}
 QComboBox#fleetAnalysisFilter{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650}
 QComboBox#fleetAnalysisFilter:hover{background:#f8fbff;border-color:#7aa7e8}
@@ -171,13 +164,14 @@ QSlider#telemetryTimeline::handle:horizontal{background:#2563eb;border:none;widt
 QSlider#telemetryTimeline::handle:horizontal:hover{background:#1d4ed8}
 QSlider#telemetryTimeline::handle:horizontal:pressed{background:#1e40af}
 QComboBox#telemetryRows{background:#ffffff;color:#1e293b;border:1px solid #94a3b8;border-radius:6px;padding:5px 8px;font-size:12px}
-QToolButton#chartFilterButton{background:#ffffff;color:#1e293b;border:1px solid #94a3b8;border-radius:7px;padding:7px 22px 7px 12px;font-weight:700}
-QToolButton#chartFilterButton:hover{background:#eaf0f6;border-color:#64748b}
-QPushButton#combineChartsButton{background:#ffffff;color:#1e293b;border:1px solid #94a3b8;border-radius:7px;padding:7px 12px;font-weight:700}
-QPushButton#combineChartsButton:hover{background:#eaf0f6;border-color:#64748b}
-QPushButton#combineChartsButton:checked{background:#0b1220;color:#ffffff;border-color:#0b1220}
-QPushButton#combineChartsButton:checked:hover{background:#1e293b;border-color:#1e293b}
-QPushButton#combineChartsButton:focus{border:2px solid #64748b}
+QToolButton#chartFilterButton{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650;text-align:left}
+QToolButton#chartFilterButton:hover{background:#f8fbff;border-color:#7aa7e8}
+QToolButton#chartFilterButton:focus{border:2px solid #2563eb}
+QPushButton#combineChartsButton{background:#0b1220;color:#ffffff;border:1px solid #0b1220;border-radius:8px;padding:8px 14px;font-weight:650}
+QPushButton#combineChartsButton:hover{background:#1e293b;border-color:#1e293b}
+QPushButton#combineChartsButton:checked{background:#dbeafe;color:#1e3a8a;border-color:#60a5fa}
+QPushButton#combineChartsButton:checked:hover{background:#bfdbfe;border-color:#2563eb}
+QPushButton#combineChartsButton:focus{border:2px solid #2563eb}
 QWidget#chartFilterContent{background:#ffffff}
 QLabel#chartFilterTitle{color:#0f172a;font-size:14px;font-weight:750}
 QWidget#chartFilterContent QCheckBox{background:transparent;color:#1e293b;font-size:13px;spacing:8px;padding:4px 2px}
@@ -190,7 +184,9 @@ QLabel#telemetryEmptyHint{color:#64748b;font-size:12px}
 
 QLabel#selectionCount{background:transparent;color:#64748b;padding:5px 8px;font-size:11px;font-weight:650}
 QLabel#selectionCount[active="true"]{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd;border-radius:10px;font-weight:750}
-QWidget#selectionCell,QWidget#flightCell,QWidget#tableActions{background:transparent;border:none;border-right:1px solid #d3dce8}
-QWidget#selectionCell[rowSelected="true"],QWidget#flightCell[rowSelected="true"],QWidget#tableActions[rowSelected="true"]{background:#dbeafe}
+QWidget#selectionCell,QWidget#flightCell,QWidget#flightEventCell,QWidget#tableActions{background:transparent;border:none;border-right:1px solid #d3dce8}
+QWidget#selectionCell[rowSelected="true"],QWidget#flightCell[rowSelected="true"],QWidget#flightEventCell[rowSelected="true"],QWidget#tableActions[rowSelected="true"]{background:#dbeafe}
 QWidget#selectionCell[rowSelected="true"]{border-left:3px solid #2563eb}
+QLabel#flightExceedanceBadge{background:#fee2e2;color:#991b1b;border:1px solid #ef9a9a;border-radius:7px;padding:2px 4px;font-size:11px;font-weight:750}
+QLabel#flightMiscmpBadge{background:#f3e8ff;color:#7e22ce;border:1px solid #c084fc;border-radius:7px;padding:2px 4px;font-size:11px;font-weight:750}
 '''

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 )
 
 from helink.ui.dialogs import PdfPreviewDialog
+from helink.services.flight_route_service import nearest_route_point_index
 from helink.ui.tabs import AlertsTab, MapTab, OverviewTab, TelemetryTab
 
 
@@ -28,20 +29,20 @@ class FlightDetailsPage(QWidget):
         self.tabs=QTabWidget(); root.addWidget(self.tabs)
         self.overview=OverviewTab(); self.overview.import_requested.connect(lambda t:self.import_requested.emit(self.fid,t)); self.overview.event_requested.connect(self.open_event_summary); self.tabs.addTab(self.overview,'Overview')
         self.telemetry=TelemetryTab(); self.tabs.addTab(self.telemetry,'Telemetry')
+        self.telemetry.route_requested.connect(self.open_route_at_telemetry)
         self.overview.parameter_requested.connect(self.open_parameter_chart)
         self.cas=AlertsTab('CAS'); self.tabs.addTab(self.cas,'CAS')
         self.exceed=AlertsTab('EXCEEDANCE'); self.tabs.addTab(self.exceed,'Exceedances')
         self.route=MapTab(); self.tabs.addTab(self.route,'Flight Route')
-        self.overview.route_requested.connect(
-            lambda: self.tabs.setCurrentWidget(self.route)
-        )
+        self.overview.route_requested.connect(self.open_full_route)
         self.report_tab=QWidget(); rl=QVBoxLayout(self.report_tab); self.report=QTextEdit(); self.report.setReadOnly(True); gen=QPushButton('Generate Maintenance Report'); gen.clicked.connect(self.make_report); rl.addWidget(gen); rl.addWidget(self.report); self.tabs.addTab(self.report_tab,'Maintenance Report')
         self.tabs.currentChanged.connect(self._load_selected_tab)
 
     def load(self, fid, prepared=None):
-        if prepared is not None and prepared is self._prepared:
+        if fid == self.fid and prepared is not None and prepared is self._prepared:
             self._ensure_tab_loaded(self.tabs.currentWidget())
             return
+        switching_flight = self.fid is not None and fid != self.fid
         self.cancel_pending()
         self._prepared = prepared
         if prepared is None:
@@ -67,7 +68,10 @@ class FlightDetailsPage(QWidget):
             if aircraft else ''
         )
         self._ensure_tab_loaded(self.overview)
-        self._ensure_tab_loaded(self.tabs.currentWidget())
+        if switching_flight:
+            self.tabs.setCurrentWidget(self.overview)
+        else:
+            self._ensure_tab_loaded(self.tabs.currentWidget())
 
     def cancel_pending(self):
         for tab in (self.cas, self.exceed):
@@ -106,6 +110,25 @@ class FlightDetailsPage(QWidget):
         self._ensure_tab_loaded(self.telemetry)
         if self.telemetry.focus_parameter(parameter_key):
             self.tabs.setCurrentWidget(self.telemetry)
+
+    def open_route_at_telemetry(self, sample):
+        if self._flight is None:
+            return
+        point_index = nearest_route_point_index(self._flight, sample)
+        if point_index is None:
+            QMessageBox.information(
+                self, 'Route position unavailable',
+                'No GPS position with a usable timestamp matches this telemetry point.',
+            )
+            return
+        self._ensure_tab_loaded(self.route)
+        self.tabs.setCurrentWidget(self.route)
+        self.route.focus_point(point_index)
+
+    def open_full_route(self):
+        self._ensure_tab_loaded(self.route)
+        self.tabs.setCurrentWidget(self.route)
+        self.route.show_full_route()
 
     def open_event_summary(self, event_key):
         if event_key == 'exceedances':

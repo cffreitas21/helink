@@ -393,6 +393,31 @@ class BackgroundTasksTests(unittest.TestCase):
         self.wait_until(lambda: not window.tasks.busy)
         self.assertIs(window.flight_details._prepared, prepared)
 
+    def test_opening_a_different_flight_returns_to_overview(self):
+        with self.database.connection:
+            self.database.connection.execute(
+                "INSERT INTO flights(id,aircraft_id,flight_date,departure_time,arrival_time)"
+                " VALUES('f2','a','2026-09-02','09:00:00','09:00:01')"
+            )
+            self.database.connection.execute(
+                "INSERT INTO engine_data(flight_id,seq,timestamp,itt,eng_ot)"
+                " VALUES('f2',0,'09:00:00',750,90)"
+            )
+        window = self.window()
+        window.navigation_controller.show_flight('f')
+        self.wait_until(lambda: not window.tasks.busy)
+        details = window.flight_details
+        details.tabs.setCurrentWidget(details.telemetry)
+        self.assertIs(details.tabs.currentWidget(), details.telemetry)
+
+        window.navigation_controller.show_aircraft('a')
+        self.wait_until(lambda: not window.tasks.busy)
+        window.navigation_controller.show_flight('f2')
+        self.wait_until(lambda: not window.tasks.busy)
+        self.assertIs(details.tabs.currentWidget(), details.overview)
+        self.assertEqual(details.fid, 'f2')
+        self.assertEqual(details.overview.metric_values['itt_avg'].text(), '750.0')
+
     def test_old_navigation_results_cannot_replace_a_newly_selected_page(self):
         window = self.window()
         original = FlightController.details_data

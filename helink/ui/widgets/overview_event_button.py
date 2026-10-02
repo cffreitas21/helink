@@ -2,7 +2,7 @@ from PySide6.QtWidgets import QToolButton
 
 
 class OverviewEventButton(QToolButton):
-    """Clickable overview card whose wrapped content determines its height."""
+    """Clickable event badge in the flight summary."""
 
     def sizeHint(self):
         layout = self.layout()

@@ -1,4 +1,4 @@
-from PySide6.QtCore import QEvent, QTimer, Qt
+from PySide6.QtCore import QEvent, QTimer, Qt, Signal
 from math import isfinite
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from helink.services.flight_telemetry_series import flight_parameter_series
+from helink.services.flight_route_service import flight_route_availability
 from helink.ui.telemetry_parameters import (
     OVERVIEW_TELEMETRY_PARAMETERS, TELEMETRY_PARAMETERS,
 )
@@ -25,6 +26,7 @@ from helink.ui.widgets import Card, ChartFilterButton, CombinedTelemetryPlot, Pl
 
 
 class TelemetryTab(QWidget):
+    route_requested = Signal(object)
     CHARTS = TELEMETRY_PARAMETERS
     INSTRUMENT_ROW_COUNTS = (1, 3, 5, 7, 9, 18)
     INSTRUMENTS = (
@@ -32,12 +34,13 @@ class TelemetryTab(QWidget):
         ('n2', 'N2', '%'),
         ('nr', 'NR', '%'),
         ('itt', 'ITT', '\N{DEGREE SIGN}C'),
-        ('eng_ot', 'ENG OIL TEMP', '\N{DEGREE SIGN}C'),
-        ('eng_op', 'ENG OIL PRESS', 'psi'),
-        ('xmsn_ot', 'XMSN OIL TEMP', '\N{DEGREE SIGN}C'),
-        ('xmsn_op', 'XMSN OIL PRESS', 'psi'),
+        ('eng_ot', 'ENG OIL\nTEMP', '\N{DEGREE SIGN}C'),
+        ('eng_op', 'ENG OIL\nPRESS', 'psi'),
+        ('xmsn_ot', 'XMSN OIL\nTEMP', '\N{DEGREE SIGN}C'),
+        ('xmsn_op', 'XMSN OIL\nPRESS', 'psi'),
         ('fuel_press', 'FUEL PRESS', 'psi'),
         ('oat', 'OAT', '\N{DEGREE SIGN}C'),
+        ('ias', 'IAS', 'kt'),
     )
 
     def __init__(self):
@@ -103,6 +106,13 @@ class TelemetryTab(QWidget):
         rows_label.setBuddy(self.row_count_selector)
         toolbar.addWidget(rows_label)
         toolbar.addWidget(self.row_count_selector)
+        self.view_route_button = QPushButton('View on Map')
+        self.view_route_button.setObjectName('secondary')
+        self.view_route_button.setFixedHeight(36)
+        self.view_route_button.setEnabled(False)
+        self.view_route_button.setToolTip('Open the map at the selected telemetry time')
+        self.view_route_button.clicked.connect(self._request_route)
+        toolbar.addWidget(self.view_route_button)
         toolbar.addStretch()
         toolbar.addLayout(controls)
         toolbar.addStretch()
@@ -114,6 +124,7 @@ class TelemetryTab(QWidget):
         self.combine_charts_button.setToolTip('Combine the selected charts into one view')
         toolbar.addWidget(self.combine_charts_button)
         self.chart_filter = ChartFilterButton(self.CHARTS)
+        self.chart_filter.setFixedHeight(36)
         toolbar.addWidget(self.chart_filter)
         root.addLayout(toolbar)
         root.addWidget(self.slider)
@@ -122,7 +133,7 @@ class TelemetryTab(QWidget):
         self.instrument.setObjectName('telemetryWindow')
         self.instrument.setHorizontalHeaderLabels(
             ['TIMESTAMP'] + [
-                f'{label}\n({unit})'
+                self._instrument_header(label, unit)
                 for _key, label, unit in self.INSTRUMENTS
             ]
         )
@@ -212,6 +223,15 @@ class TelemetryTab(QWidget):
                 min(self.slider.maximum(), self.slider.value() + 1)
             )
         )
+
+    @staticmethod
+    def _instrument_header(label, unit):
+        first, separator, second = label.partition('\n')
+        return f'{first}\n{second} ({unit})' if separator else f'{label}\n({unit})'
+
+    def _request_route(self):
+        if self.data:
+            self.route_requested.emit(self.data[self.slider.value()])
 
     def _create_chart(self, parameter):
         key, title, unit, color = parameter
@@ -342,6 +362,12 @@ class TelemetryTab(QWidget):
         self._reset_combined_view = True
         self.flight = flight
         self.data = flight.engine_data or flight.data_log
+        route = flight_route_availability(flight)
+        self.view_route_button.setEnabled(route.available and bool(self.data))
+        self.view_route_button.setToolTip(
+            'Open the map at the selected telemetry time'
+            if route.available else route.reason
+        )
         self._series_cache.clear()
         self._time_labels = [point.timestamp for point in self.data]
         self.slider.blockSignals(True)
@@ -397,7 +423,10 @@ class TelemetryTab(QWidget):
             if point:
                 values[0] = Plot._clock_time(point.timestamp)
                 for key, _label, _unit in self.INSTRUMENTS:
-                    number = getattr(point, key, None)
+                    number = (
+                        self._parameter_values('ias')[data_index]
+                        if key == 'ias' else getattr(point, key, None)
+                    )
                     values.append(
                         f'{number:.1f}' if number is not None and isfinite(number)
                         else '\N{EM DASH}'

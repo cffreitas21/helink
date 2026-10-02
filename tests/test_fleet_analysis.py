@@ -395,7 +395,8 @@ class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
         self.assertEqual(self.page.comparison.rowCount(), 1)
         self.assertEqual(self.page.comparison.item(0, 2).text(), '95.0')
         self.assertEqual(self.page.comparison.item(0, 4).text(), '115.0')
-        self.assertIn('SN 001', self.page.context.text())
+        self.assertTrue(self.page.context.isHidden())
+        self.assertEqual(self.page.context.text(), '')
         self.assertIn('\u00b0C', self.page.plot.ax.get_ylabel())
         _, _, dates, _ = self.page.plot.series[0]
         self.assertEqual(dates[1] - dates[0], 9)
@@ -582,10 +583,14 @@ class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
         self.assertTrue(self.page.aircraft_selector.isHidden())
         self.assertFalse(self.page.aircraft_selector.isEnabled())
         self.assertTrue(self.page.view_flights.isHidden())
-        self.assertEqual(self.page.title.text(), 'Aircraft Analysis')
+        self.assertEqual(self.page.title.text(), 'Aircraft Analysis - TEST-B')
         self.assertEqual(self.page.back_button.text(), '\N{LEFTWARDS ARROW} Flights')
         self.assertEqual(self.page.comparison_title.text(), 'Period Summary')
-        self.assertIn('TEST-B', self.page.context.text())
+        self.assertEqual(
+            self.page.context.text(),
+            'Bell 505 \N{MIDDLE DOT} SN 002',
+        )
+        self.assertFalse(self.page.context.isHidden())
         self.assertEqual(self.page.comparison.rowCount(), 1)
         self.assertEqual(self.page.comparison.item(0, 0).text(), 'TEST-B')
         self.assertTrue(all(day.aircraft_id == 'b' for day in self.page.days))
@@ -649,6 +654,8 @@ class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
         self.assertFalse(self.page.aircraft_selector.isHidden())
         self.assertTrue(self.page.aircraft_selector.isEnabled())
         self.assertEqual(self.page.title.text(), 'Fleet Analysis')
+        self.assertTrue(self.page.context.isHidden())
+        self.assertEqual(self.page.context.text(), '')
         self.assertEqual(self.page.back_button.text(), '\N{LEFTWARDS ARROW} Fleet')
         self.assertEqual(self.page.comparison_title.text(), 'Period Comparison')
         self.assertEqual(self.page.aircraft_selector.selected_ids(), ('a', 'b', 'c'))

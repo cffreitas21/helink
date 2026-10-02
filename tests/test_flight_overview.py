@@ -22,7 +22,7 @@ from helink.services.flight_overview_summary import (
     flight_parameter_statistics, important_flight_events, recorded_statistics,
 )
 from helink.services.flight_route_service import (
-    flight_route_availability, route_coordinates,
+    flight_route_availability, nearest_route_point_index, route_coordinates,
 )
 from helink.ui.pages.flight_details_page import FlightDetailsPage
 from helink.ui.tabs.alerts_tab import AlertsTab
@@ -201,6 +201,33 @@ class FlightRouteAvailabilityTests(unittest.TestCase):
                     route_coordinates(gps), (point['lat'], point['lon']),
                 )
 
+    def test_telemetry_time_selects_nearest_valid_map_point(self):
+        base = sample_flight()
+        invalid = replace(base.data_log[0], latitude=0, longitude=0)
+        route = (
+            invalid,
+            replace(base.data_log[0], timestamp='11:00:00'),
+            replace(base.data_log[1], timestamp='11:00:10'),
+        )
+        flight = replace(base, data_log=route)
+        sample = replace(base.engine_data[0], timestamp='2026-09-28 11:00:08')
+        self.assertEqual(nearest_route_point_index(flight, sample), 1)
+        self.assertEqual(nearest_route_point_index(flight, route[1]), 0)
+        self.assertIsNone(
+            nearest_route_point_index(
+                flight, replace(sample, timestamp='invalid'),
+            )
+        )
+
+    def test_telemetry_time_matches_route_across_midnight(self):
+        base = sample_flight()
+        flight = replace(base, data_log=(
+            replace(base.data_log[0], timestamp='23:50:00'),
+            replace(base.data_log[1], timestamp='00:00:01'),
+        ))
+        sample = replace(base.engine_data[0], timestamp='2026-09-28 23:59:59')
+        self.assertEqual(nearest_route_point_index(flight, sample), 1)
+
 
 class OverviewWidgetTests(unittest.TestCase):
     @classmethod
@@ -230,24 +257,28 @@ class OverviewWidgetTests(unittest.TestCase):
         self.tab.deleteLater()
         self.app.processEvents()
 
-    def test_values_and_only_two_event_tiles(self):
+    def test_values_and_compact_event_badges_in_flight_summary(self):
         self.assertEqual(self.tab.metric_values['itt_avg'].text(), '670.0')
         self.assertEqual(self.tab.metric_values['itt_max'].text(), '700.0')
         self.assertEqual(self.tab.metric_values['ias_avg'].text(), '110.0')
         self.assertEqual(self.tab.metric_values['alt_ind_max'].text(), '2,000')
         self.assertEqual(set(self.tab.event_badges), {'exceedances', 'miscmp'})
-        self.assertEqual(self.tab.event_values['exceedances'].text(), '1')
-        self.assertEqual(self.tab.event_values['miscmp'].text(), '1')
+        self.assertEqual(self.tab.event_badges['exceedances'].text(), 'Exceedances 1')
+        self.assertEqual(self.tab.event_badges['miscmp'].text(), 'MISCMP-P 1')
         self.assertEqual(self.tab.summary_values['arrival'].text(), '11:10:00')
         self.assertEqual(self.tab.file_count.text(), '4 / 9')
-        self.assertEqual(self.tab.event_notes['exceedances'].text(), 'ITT')
-        self.assertLess(
-            self.tab.event_badges['miscmp'].width(),
-            self.tab.event_badges['exceedances'].width(),
-        )
-        self.assertLess(
-            self.tab.event_badges['miscmp'].height(),
-            self.tab.event_badges['exceedances'].height(),
+        self.assertIn('ITT', self.tab.event_badges['exceedances'].toolTip())
+        duration = self.tab.summary_values['duration'].mapTo(self.tab, QPoint())
+        exceedance = self.tab.event_badges['exceedances'].mapTo(self.tab, QPoint())
+        miscmp = self.tab.event_badges['miscmp'].mapTo(self.tab, QPoint())
+        self.assertEqual(exceedance.x(), duration.x())
+        self.assertGreater(exceedance.y(), duration.y())
+        self.assertEqual(miscmp.x(), exceedance.x())
+        self.assertGreater(miscmp.y(), exceedance.y())
+        self.assertTrue(self.tab.event_placeholder.isHidden())
+        self.assertNotIn(
+            'Flight Events',
+            [label.text() for label in self.tab.findChildren(QLabel)],
         )
 
     def test_destination_is_aligned_directly_below_departure(self):
@@ -368,44 +399,37 @@ class OverviewWidgetTests(unittest.TestCase):
         self.tab.load(Flight(id='empty', aircraft_id='test', flight_date=''))
         self.assertTrue(all(label.text() == '\u2014'
                             for label in self.tab.metric_values.values()))
-        self.assertEqual(self.tab.event_values['miscmp'].text(), '\u2014')
-        self.assertFalse(self.tab.event_badges['miscmp'].isEnabled())
         self.assertTrue(self.tab.event_badges['miscmp'].isHidden())
-        self.assertEqual(self.tab.event_notes['exceedances'].text(), 'No exceedance data')
-        self.assertFalse(self.tab.event_badges['exceedances'].property('eventActive'))
+        self.assertTrue(self.tab.event_badges['exceedances'].isHidden())
+        self.assertFalse(self.tab.event_placeholder.isHidden())
         self.assertEqual(self.tab.file_count.text(), '0 / 9')
 
-    def test_zero_miscmp_is_hidden_and_exceedances_remain_visible(self):
+    def test_zero_events_show_placeholder_and_reload_restores_badges(self):
         self.tab.load(replace(sample_flight(), alerts=()))
-        self.assertEqual(self.tab.event_values['miscmp'].text(), '0')
         self.assertTrue(self.tab.event_badges['miscmp'].isHidden())
-        self.assertFalse(self.tab.event_badges['miscmp'].property('eventActive'))
-        self.assertTrue(self.tab.event_badges['miscmp'].isEnabled())
-        self.assertFalse(self.tab.event_badges['exceedances'].isHidden())
-        self.assertEqual(self.tab.event_notes['exceedances'].text(), 'No exceedances recorded')
+        self.assertTrue(self.tab.event_badges['exceedances'].isHidden())
+        self.assertFalse(self.tab.event_placeholder.isHidden())
         self.tab.load(sample_flight())
         self.assertFalse(self.tab.event_badges['miscmp'].isHidden())
+        self.assertFalse(self.tab.event_badges['exceedances'].isHidden())
+        self.assertTrue(self.tab.event_placeholder.isHidden())
 
-    def test_long_exceedance_list_wraps_without_clipping(self):
+    def test_long_exceedance_names_remain_in_tooltip_without_expanding_summary(self):
         flight = sample_flight()
         alerts = tuple(
             replace(flight.alerts[0], id=index, alert_name=f'ENGINE PARAMETER {index}')
             for index in range(20)
         )
         self.tab.load(replace(flight, alerts=alerts))
+        badge = self.tab.event_badges['exceedances']
+        self.assertEqual(badge.text(), 'Exceedances 20')
+        self.assertIn('ENGINE PARAMETER 0', badge.toolTip())
+        self.assertIn('ENGINE PARAMETER 19', badge.toolTip())
         for width in (1000, 1280, 1600):
             with self.subTest(width=width):
                 self.tab.resize(width, 860)
                 self.app.processEvents()
-                note = self.tab.event_notes['exceedances']
-                required = note.fontMetrics().boundingRect(
-                    QRect(0, 0, note.contentsRect().width(), 10000),
-                    Qt.TextWordWrap, note.text(),
-                ).height()
-                self.assertGreaterEqual(note.height(), required)
-                badge = self.tab.event_badges['exceedances']
-                bottom = note.mapTo(badge, QPoint(0, note.height())).y()
-                self.assertLessEqual(bottom, badge.height())
+                self.assertEqual((badge.width(), badge.height()), (132, 25))
 
     def test_metric_values_fit_at_multiple_window_widths(self):
         for width in (1000, 1280, 1600):
@@ -529,6 +553,8 @@ class FlightDetailsLoadingTests(unittest.TestCase):
         )
         self.route = QWidget()
         self.route.load = Mock()
+        self.route.focus_point = Mock()
+        self.route.show_full_route = Mock()
         with patch('helink.ui.pages.flight_details_page.MapTab', return_value=self.route):
             self.page = FlightDetailsPage(self.aircraft, self.flights, Mock())
         self.addCleanup(self.page.deleteLater)
@@ -616,21 +642,36 @@ class FlightDetailsLoadingTests(unittest.TestCase):
         self.page.overview.view_route_button.click()
         self.assertIs(self.page.tabs.currentWidget(), self.route)
         self.route.load.assert_called_once_with(self.flight)
+        self.route.show_full_route.assert_called_once_with()
         self.page.tabs.setCurrentWidget(self.page.overview)
         self.page.overview.view_route_button.click()
+        self.route.load.assert_called_once_with(self.flight)
+
+    def test_telemetry_map_button_opens_the_selected_route_position(self):
+        with patch(
+            'helink.services.flight_route_service.offline_map_assets_available',
+            return_value=True,
+        ):
+            self.page.load(self.flight.id)
+            self.page.tabs.setCurrentWidget(self.page.telemetry)
+        self.page.telemetry.slider.setValue(1)
+        self.page.telemetry.view_route_button.click()
+        self.assertIs(self.page.tabs.currentWidget(), self.route)
+        self.route.focus_point.assert_called_once_with(1)
         self.route.load.assert_called_once_with(self.flight)
 
     def test_opening_another_flight_invalidates_all_prepared_tabs(self):
         self.page.load(self.flight.id)
         for tab in (self.page.telemetry, self.page.cas, self.page.exceed, self.route):
             self.page.tabs.setCurrentWidget(tab)
-        self.page.tabs.setCurrentWidget(self.page.overview)
+        self.assertIs(self.page.tabs.currentWidget(), self.route)
         changed = replace(
             self.flight, id='second-flight', data_log=(), alerts=(),
             engine_data=(replace(self.flight.engine_data[0], itt=900),),
         )
         self.flights.get.return_value = changed
         self.page.load(changed.id)
+        self.assertIs(self.page.tabs.currentWidget(), self.page.overview)
         self.assertEqual(self.page._loaded_tabs, {self.page.overview})
         self.assertEqual(self.page.overview.metric_values['itt_avg'].text(), '900.0')
         for tab in (self.page.telemetry, self.page.cas, self.page.exceed, self.route):

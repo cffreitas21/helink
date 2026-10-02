@@ -50,6 +50,12 @@ class MapTab(QWidget):
             format_airport(f.destination) if f.destination else '',
         )
 
+    def focus_point(self, index):
+        self.map.focus_point(index)
+
+    def show_full_route(self):
+        self.map.show_full_route()
+
 
 class OfflineRouteMap(QWebEngineView):
     status_changed = Signal(str)
@@ -62,6 +68,8 @@ class OfflineRouteMap(QWebEngineView):
         self.setContextMenuPolicy(Qt.NoContextMenu)
         self.page().setBackgroundColor(Qt.white)
         self._document_name = f'route-{uuid.uuid4().hex}.html'
+        self._route_loaded = False
+        self._pending_focus_index = None
         self.loadFinished.connect(self._load_finished)
         self.renderProcessTerminated.connect(
             lambda *_: self.status_changed.emit(
@@ -72,17 +80,38 @@ class OfflineRouteMap(QWebEngineView):
         self.destroyed.connect(lambda *_: server.remove_document(name))
 
     def _load_finished(self, ok):
+        self._route_loaded = ok
         self.status_changed.emit(
             '' if ok else
             'The offline map could not be loaded. Reopen the flight to try again.'
         )
         if ok and self.isVisible():
             self._refresh_map()
+        if ok:
+            self._apply_focus()
 
     def _refresh_map(self):
         self.page().runJavaScript(
-            'if (window.refreshRouteMap) window.refreshRouteMap(true);'
+            'if (window.refreshRouteMap) window.refreshRouteMap(!window.routeFocused);'
         )
+
+    def focus_point(self, index):
+        self._pending_focus_index = index
+        self._apply_focus()
+
+    def show_full_route(self):
+        self._pending_focus_index = None
+        if self._route_loaded:
+            self.page().runJavaScript(
+                'if (window.clearRouteFocus) window.clearRouteFocus();'
+            )
+
+    def _apply_focus(self):
+        if self._route_loaded and self._pending_focus_index is not None:
+            self.page().runJavaScript(
+                f'if (window.focusRoutePoint) '
+                f'window.focusRoutePoint({self._pending_focus_index});'
+            )
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -109,6 +138,8 @@ class OfflineRouteMap(QWebEngineView):
         }
 
     def load_route(self, rows, destination=''):
+        self._route_loaded = False
+        self._pending_focus_index = None
         points = [point for row in (rows or []) if (point := self._point(row))]
         self.status_changed.emit('Loading offline map...')
         # Keep flight data in memory and escape script delimiters in CSV values.
@@ -140,9 +171,28 @@ function escapeText(value){const element=document.createElement("span");element.
 function popup(p){return '<div class="route-popup"><strong>Flight data</strong><br>Time: '+escapeText(p.time)+'<br>Altitude: '+escapeText(p.altitude)+' ft<br>IAS: '+escapeText(p.ias)+' kt<br>Heading: '+escapeText(p.heading)+'&deg;<br>Position: '+p.lat.toFixed(5)+', '+p.lon.toFixed(5)+'</div>';}
 const pts=DATA.points||[];
 const routeBounds=pts.length?L.latLngBounds(pts.map(p=>[p.lat,p.lon])):null;
+let focusMarker=null;
+window.routeFocused=false;
 window.refreshRouteMap=function(fit){
  map.invalidateSize({pan:false});
  if(fit && routeBounds){map.fitBounds(routeBounds.pad(.12),{padding:[28,28],maxZoom:12,animate:false});}
+};
+window.focusRoutePoint=function(index){
+ const point=pts[index];
+ if(!point){return false;}
+ window.routeFocused=true;
+ if(focusMarker){map.removeLayer(focusMarker);}
+ focusMarker=L.circleMarker([point.lat,point.lon],{
+  radius:10,color:"#fff",weight:3,fillColor:"#1558d6",fillOpacity:1
+ }).addTo(map);
+ map.setView([point.lat,point.lon],Math.max(map.getZoom(),11),{animate:false});
+ focusMarker.bindPopup("<strong>Selected telemetry point</strong><br>"+popup(point)).openPopup();
+ return true;
+};
+window.clearRouteFocus=function(){
+ window.routeFocused=false;
+ if(focusMarker){map.removeLayer(focusMarker);focusMarker=null;}
+ window.refreshRouteMap(true);
 };
 new ResizeObserver(()=>window.refreshRouteMap(false)).observe(document.getElementById("map"));
 statusMessage.hidden=true;

@@ -19,6 +19,8 @@ class Flight:
     origin: str = ''
     destination: str = ''
     imported_files: tuple[str, ...] = field(default_factory=tuple)
+    exceedance_count: int = 0
+    miscmp_count: int = 0
     predictive_report: str = ''
     created_at: str | None = None
     engine_data: tuple[EngineData, ...] = field(default_factory=tuple)
@@ -37,6 +39,8 @@ class Flight:
             origin=str(record.get('origin') or ''),
             destination=str(record.get('destination') or ''),
             imported_files=tuple(record.get('imported_files') or ()),
+            exceedance_count=int(record.get('exceedance_count') or 0),
+            miscmp_count=int(record.get('miscmp_count') or 0),
             predictive_report=str(record.get('predictive_report') or ''),
             created_at=record.get('created_at'),
             engine_data=tuple(

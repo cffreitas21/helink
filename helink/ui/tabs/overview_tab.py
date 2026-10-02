@@ -1,7 +1,7 @@
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea,
-    QSizePolicy, QToolButton, QVBoxLayout, QWidget,
+    QToolButton, QVBoxLayout, QWidget,
 )
 
 from helink.services.airport_formatter import format_airport
@@ -102,16 +102,11 @@ class OverviewTab(QWidget):
         timing.addWidget(
             self.view_route_button, 2, 2, 2, 1, Qt.AlignLeft | Qt.AlignVCenter,
         )
-        summary.layout.addLayout(timing)
-        self.content_layout.addWidget(summary)
-
-        events = Card('Flight Events')
-        events.layout.setContentsMargins(14, 10, 14, 10)
-        self.event_values = {}
+        event_column = QVBoxLayout()
+        event_column.setContentsMargins(0, 4, 0, 0)
+        event_column.setSpacing(4)
+        event_column.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.event_badges = {}
-        self.event_notes = {}
-        event_row = QHBoxLayout()
-        event_row.setSpacing(10)
         for key, title, object_name in (
             ('exceedances', 'Exceedances', 'overviewExceedances'),
             ('miscmp', 'MISCMP-P', 'overviewMiscmp'),
@@ -119,49 +114,22 @@ class OverviewTab(QWidget):
             badge = OverviewEventButton()
             badge.setObjectName(object_name)
             badge.setCursor(Qt.PointingHandCursor)
-            policy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            policy.setHeightForWidth(True)
-            badge.setSizePolicy(policy)
-            badge.setMinimumHeight(72)
+            badge.setFixedSize(132, 25)
+            badge.hide()
             badge.clicked.connect(
                 lambda _, event_key=key: self.event_requested.emit(event_key)
             )
-            layout = QHBoxLayout(badge)
-            layout.setContentsMargins(12, 8, 12, 8)
-            layout.setSpacing(12)
-            value = QLabel('\u2014')
-            value.setObjectName('overviewEventValue')
-            layout.addWidget(value)
-            description = QVBoxLayout()
-            description.setSpacing(2)
-            caption = QLabel(title)
-            caption.setObjectName('overviewEventTitle')
-            caption.setWordWrap(True)
-            note = QLabel('No event data')
-            note.setObjectName('overviewEventNote')
-            note.setTextFormat(Qt.PlainText)
-            note.setWordWrap(True)
-            description.addWidget(caption)
-            description.addWidget(note)
-            layout.addLayout(description, 1)
-            arrow = QLabel('\u2192')
-            arrow.setObjectName('overviewEventArrow')
-            layout.addWidget(arrow)
-            for label in (value, caption, note, arrow):
-                label.setAttribute(Qt.WA_TransparentForMouseEvents)
-            self.event_values[key] = value
             self.event_badges[key] = badge
-            self.event_notes[key] = note
-            if key == 'miscmp':
-                note.hide()
-                arrow.hide()
-                badge.setFixedSize(160, 54)
-                badge.hide()
-            event_row.addWidget(
-                badge, 1 if key == 'exceedances' else 0, Qt.AlignTop,
-            )
-        events.layout.addLayout(event_row)
-        self.content_layout.addWidget(events)
+            event_column.addWidget(badge, 0, Qt.AlignLeft)
+        self.event_placeholder = QLabel('\u2014')
+        self.event_placeholder.setObjectName('overviewEventEmpty')
+        self.event_placeholder.setToolTip(
+            'No recorded exceedance or MISCMP-P SET activations.'
+        )
+        event_column.addWidget(self.event_placeholder, 0, Qt.AlignLeft)
+        timing.addLayout(event_column, 2, 3, 2, 1, Qt.AlignLeft | Qt.AlignTop)
+        summary.layout.addLayout(timing)
+        self.content_layout.addWidget(summary)
 
         dashboard = Card('Flight Parameter Dashboard')
         dashboard.layout.setContentsMargins(14, 12, 14, 12)
@@ -290,42 +258,31 @@ class OverviewTab(QWidget):
                     value.setAccessibleName(f'{label} {name.upper()} ({unit})')
                     value.setToolTip(tooltip)
 
+        event_count = 0
         for key, summary in (
             important_flight_events(flight) if events is None else events
         ).items():
             badge = self.event_badges[key]
-            self.event_values[key].setText(
-                str(summary.count) if summary.available else '\u2014'
-            )
-            if key == 'exceedances':
-                names = ' \u00b7 '.join(
-                    f'{name} ({count})' if count > 1 else name
-                    for name, count in summary.activated_names
-                )
-                self.event_notes[key].setText(
-                    names or (
-                        'No exceedances recorded'
-                        if summary.available else 'No exceedance data'
-                    )
-                )
-            else:
-                badge.setVisible(summary.count > 0)
-            badge.setProperty('eventActive', summary.count > 0)
-            badge.setEnabled(summary.available)
             title = 'Exceedances' if key == 'exceedances' else 'MISCMP-P'
+            badge.setText(f'{title} {summary.count}')
+            badge.setVisible(summary.count > 0)
+            badge.setEnabled(summary.available)
+            event_count += summary.count
             badge.setAccessibleName(
-                f'{title}: {summary.count} SET activations'
-                if summary.available else f'{title}: no event data'
+                f'{title}: {summary.count} SET '
+                f'{"activation" if summary.count == 1 else "activations"}. Open history.'
+            )
+            details = '\n'.join(
+                f'{name} ({count})' if count > 1 else name
+                for name, count in summary.activated_names
             )
             badge.setToolTip(
-                f'Open {title} event history. Counts include SET activations only.'
-                if summary.available else f'No {title} event source was imported.'
+                f'Open {title} event history. '
+                f'{summary.count} SET '
+                f'{"activation" if summary.count == 1 else "activations"}.'
+                + (f'\n{details}' if details else '')
             )
-            for widget in (badge, *badge.findChildren(QLabel)):
-                widget.style().unpolish(widget)
-                widget.style().polish(widget)
-                widget.update()
-            badge.updateGeometry()
+        self.event_placeholder.setVisible(event_count == 0)
 
         if route is None:
             route = flight_route_availability(flight)

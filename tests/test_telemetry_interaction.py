@@ -184,6 +184,36 @@ class CombinedNavigationTests(unittest.TestCase):
         self.assertEqual(self.plot.ax.get_xlim(), (0, 49))
         self.assertEqual(self.received, [22])
 
+    def test_cursor_is_arrow_until_dragging_and_restores_on_release(self):
+        box = self.plot.ax.bbox
+        x = (box.x0 + box.x1) / 2
+        y = (box.y0 + box.y1) / 2
+        for name, position, options in (
+            ('motion_notify_event', (x, y), {}),
+            ('button_press_event', (x, y), {'button': MouseButton.LEFT}),
+            ('motion_notify_event', (x + 2, y), {'buttons': {MouseButton.LEFT}}),
+        ):
+            self.plot.callbacks.process(
+                name, MouseEvent(name, self.plot, *position, **options),
+            )
+            self.assertEqual(self.plot.cursor().shape(), Qt.ArrowCursor)
+        self.plot.callbacks.process(
+            'motion_notify_event',
+            MouseEvent(
+                'motion_notify_event', self.plot, x + 30, y,
+                buttons={MouseButton.LEFT},
+            ),
+        )
+        self.assertEqual(self.plot.cursor().shape(), Qt.ClosedHandCursor)
+        self.plot.callbacks.process(
+            'button_release_event',
+            MouseEvent(
+                'button_release_event', self.plot, x + 30, y,
+                button=MouseButton.LEFT,
+            ),
+        )
+        self.assertEqual(self.plot.cursor().shape(), Qt.ArrowCursor)
+
     def test_navigation_is_bounded_and_axes_labels_remain_visible(self):
         for _ in range(20):
             self.plot.zoom_view(0.1)
@@ -485,6 +515,14 @@ class TelemetrySynchronizationTests(unittest.TestCase):
             for index in (3, 7)
         )
         self.tab.load(replace(self.tab.flight, data_log=gps))
+        ias_column = next(
+            index + 1 for index, (key, *_rest) in enumerate(self.tab.INSTRUMENTS)
+            if key == 'ias'
+        )
+        self.tab.slider.setValue(3)
+        self.assertEqual(self.tab.instrument.item(0, ias_column).text(), '103.0')
+        self.tab.slider.setValue(4)
+        self.assertEqual(self.tab.instrument.item(0, ias_column).text(), '\N{EM DASH}')
         for key, title, expected in (('ias', 'IAS', 103), ('alt_ind', 'ALTITUDE', 1003)):
             with self.subTest(parameter=key):
                 self.assertTrue(self.tab.focus_parameter(key))
@@ -529,16 +567,29 @@ class TelemetrySynchronizationTests(unittest.TestCase):
 
     def test_controls_share_toolbar_between_rows_and_charts_above_slider(self):
         rows = self.tab.row_count_selector.geometry()
+        route = self.tab.view_route_button.geometry()
         charts = self.tab.chart_filter.geometry()
         previous = self.tab.prev.geometry()
         time = self.tab.time.geometry()
         following = self.tab.next.geometry()
-        self.assertLess(rows.right(), previous.left())
+        self.assertLess(rows.right(), route.left())
+        self.assertLess(route.right(), previous.left())
         self.assertLess(previous.right(), time.left())
         self.assertLess(time.right(), following.left())
         self.assertLess(following.right(), charts.left())
         self.assertEqual(previous.center().y(), charts.center().y())
         self.assertLess(previous.bottom(), self.tab.slider.y())
+
+    def test_instrument_headers_break_temperature_and_pressure_and_end_with_ias(self):
+        headers = [
+            self.tab.instrument.horizontalHeaderItem(column).text()
+            for column in range(self.tab.instrument.columnCount())
+        ]
+        self.assertIn('ENG OIL\nTEMP (\N{DEGREE SIGN}C)', headers)
+        self.assertIn('ENG OIL\nPRESS (psi)', headers)
+        self.assertIn('XMSN OIL\nTEMP (\N{DEGREE SIGN}C)', headers)
+        self.assertIn('XMSN OIL\nPRESS (psi)', headers)
+        self.assertEqual(headers[-2:], ['OAT\n(\N{DEGREE SIGN}C)', 'IAS\n(kt)'])
 
     def test_arrow_buttons_keep_timeline_synchronized(self):
         self.tab.slider.setValue(5)
@@ -549,6 +600,8 @@ class TelemetrySynchronizationTests(unittest.TestCase):
 
     def test_combine_button_is_outside_filter_and_immediately_to_its_left(self):
         button = self.tab.combine_charts_button
+        self.assertEqual(button.height(), self.tab.chart_filter.height())
+        self.assertEqual(button.height(), 36)
         self.assertIs(button.parentWidget(), self.tab)
         self.assertIsNot(button.parentWidget(), self.tab.chart_filter.menu())
         self.assertLess(self.tab.next.geometry().right(), button.geometry().left())

@@ -163,6 +163,51 @@ class FleetParameterCardTests(unittest.TestCase):
             ['645.5', '850.0'],
         )
 
+    def test_fleet_sorting_uses_tail_number_or_selected_avg_and_max(self):
+        controller = Mock()
+        controller.list_aircraft.return_value = [
+            Aircraft(id='a', registration='Z-003', model='Bell 505', serial_number='003'),
+            Aircraft(id='b', registration='A-001', model='Bell 505', serial_number='001'),
+            Aircraft(id='c', registration='M-002', model='Bell 505', serial_number='002'),
+        ]
+        controller.fleet_summaries.return_value = {
+            'a': {'avg_itt': 700, 'max_itt': 900},
+            'b': {'avg_itt': 800, 'max_itt': 850, 'avg_eng_op': 42},
+            'c': {'max_itt': 950, 'avg_eng_op': 70},
+        }
+        page = DashboardPage(controller)
+        self.addCleanup(page.deleteLater)
+        self.addCleanup(page.close)
+        page.refresh()
+
+        def registrations():
+            return [
+                page.list.itemAt(index).widget()
+                .findChild(QToolButton, 'fleetRegistration').text()
+                for index in range(page.list.count())
+                if page.list.itemAt(index).widget() is not None
+            ]
+
+        self.assertEqual(registrations(), ['A-001', 'M-002', 'Z-003'])
+        page.sort_order.setCurrentIndex(1)
+        self.assertEqual(registrations(), ['Z-003', 'M-002', 'A-001'])
+
+        page.sort_by.setCurrentIndex(page.sort_by.findData('avg_itt'))
+        self.assertEqual(page.sort_order.currentText(), 'Highest first')
+        self.assertEqual(registrations(), ['A-001', 'Z-003', 'M-002'])
+        page.sort_order.setCurrentIndex(0)
+        self.assertEqual(registrations(), ['Z-003', 'A-001', 'M-002'])
+
+        page.sort_by.setCurrentIndex(page.sort_by.findData('max_itt'))
+        self.assertEqual(registrations(), ['M-002', 'Z-003', 'A-001'])
+        page.sort_by.setCurrentIndex(page.sort_by.findData('avg_eng_op'))
+        self.assertEqual(registrations(), ['M-002', 'A-001', 'Z-003'])
+        page.sort_by.setCurrentIndex(page.sort_by.findData('registration'))
+        self.assertEqual(page.sort_order.currentText(), 'A to Z')
+        self.assertEqual(registrations(), ['A-001', 'M-002', 'Z-003'])
+        controller.list_aircraft.assert_called_once_with()
+        controller.fleet_summaries.assert_called_once_with()
+
 
 if __name__ == '__main__':
     unittest.main()

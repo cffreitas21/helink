@@ -41,24 +41,40 @@ class FlightRepository:
         self, aircraft_id=None, *, start_date=None, end_date=None, descending=True,
     ):
         """Read only list columns; leave reports and telemetry unloaded."""
-        query = (
-            'SELECT id, aircraft_id, flight_date, departure_time, arrival_time, '
-            'duration, origin, destination, imported_files, created_at FROM flights'
-        )
+        query = """SELECT f.id, f.aircraft_id, f.flight_date, f.departure_time,
+                          f.arrival_time, f.duration, f.origin, f.destination,
+                          f.imported_files, f.created_at,
+                          (SELECT COUNT(*) FROM alerts a
+                           WHERE a.flight_id=f.id AND a.kind='EXCEEDANCE'
+                             AND UPPER(TRIM(COALESCE(a.alert_state,'')))='SET'
+                             AND UPPER(TRIM(COALESCE(a.level,'')))
+                                 IN ('WARNING','CAUTION','SAFE ANN'))
+                              AS exceedance_count,
+                          (SELECT COUNT(*) FROM alerts a
+                           WHERE a.flight_id=f.id AND a.kind='CAS'
+                             AND UPPER(TRIM(COALESCE(a.alert_state,'')))='SET'
+                             AND UPPER(TRIM(COALESCE(a.alert_name,'')))='MISCMP-P'
+                             AND UPPER(TRIM(COALESCE(a.level,'')))
+                                 IN ('WARNING','CAUTION','SAFE ANN'))
+                              AS miscmp_count
+                   FROM flights f"""
         conditions, params = [], []
         if aircraft_id is not None:
-            conditions.append('aircraft_id=?')
+            conditions.append('f.aircraft_id=?')
             params.append(aircraft_id)
         if start_date is not None:
-            conditions.append('flight_date>=?')
+            conditions.append('f.flight_date>=?')
             params.append(start_date)
         if end_date is not None:
-            conditions.append('flight_date<=?')
+            conditions.append('f.flight_date<=?')
             params.append(end_date)
         if conditions:
             query += ' WHERE ' + ' AND '.join(conditions)
         direction = 'DESC' if descending else 'ASC'
-        query += f' ORDER BY flight_date {direction}, departure_time {direction}, id'
+        query += (
+            f' ORDER BY f.flight_date {direction}, '
+            f'f.departure_time {direction}, f.id'
+        )
         result = []
         for row in self.connection.execute(query, params):
             record = dict(row)

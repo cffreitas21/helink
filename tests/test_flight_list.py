@@ -14,13 +14,14 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtCore import QDate, QPoint, Qt
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QComboBox, QMessageBox
+from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QMessageBox, QPushButton
 
 from helink.controllers.aircraft_controller import AircraftController
 from helink.controllers.flight_controller import FlightController
 from helink.repositories.aircraft_repository import AircraftRepository
 from helink.repositories.database_manager import SCHEMA
 from helink.repositories.flight_repository import FlightRepository
+from helink.ui.pages.dashboard_page import DashboardPage
 from helink.ui.pages.flight_list_page import FlightListPage
 from helink.ui.theme import STYLE
 from helink.ui.widgets import FlightDateFilterButton, ImportedFilesButton
@@ -70,8 +71,50 @@ class FlightDatabaseFixture:
         self.flight_controller = FlightController(self.flight_repository)
         self.aircraft_controller = AircraftController(self.aircraft_repository)
 
+    def add_sample_events(self):
+        self.connection.executemany(
+            'INSERT INTO alerts(flight_id,kind,alert_state,alert_name,level) '
+            'VALUES(?,?,?,?,?)',
+            (
+                ('f3', 'EXCEEDANCE', 'SET', 'ENG OIL TEMP', 'WARNING'),
+                ('f3', 'EXCEEDANCE', 'CLEARED', 'ENG OIL TEMP', 'WARNING'),
+                ('f3', 'EXCEEDANCE', 'SET', 'ITT', 'CAUTION'),
+                ('f3', 'CAS', 'SET', 'MISCMP-P', 'CAUTION'),
+                ('f3', 'CAS', 'SET', 'OTHER', 'WARNING'),
+                ('f2', 'CAS', 'SET', 'MISCMP-P', 'CAUTION'),
+                ('f2', 'CAS', 'CLEARED', 'MISCMP-P', 'CAUTION'),
+                ('f1', 'EXCEEDANCE', 'SET', 'VNE', 'INFO'),
+                ('f5', 'EXCEEDANCE', 'SET', 'TQ', 'WARNING'),
+            ),
+        )
+
 
 class FlightSummaryQueryTests(FlightDatabaseFixture, unittest.TestCase):
+    def test_event_counts_match_set_activations_in_one_summary_query(self):
+        self.add_sample_events()
+        queries = []
+        self.connection.set_trace_callback(queries.append)
+        flights = self.flight_controller.list_flights('a')
+        self.assertEqual(len(queries), 1)
+        counts = {
+            flight.id: (flight.exceedance_count, flight.miscmp_count)
+            for flight in flights
+        }
+        self.assertEqual(
+            counts, {'f4': (0, 0), 'f3': (2, 1), 'f2': (0, 1), 'f1': (0, 0)},
+        )
+        self.assertNotIn('ENGINE_DATA', queries[0].upper())
+        self.assertNotIn('TRIGGERS_JSON', queries[0].upper())
+        filtered = self.flight_controller.list_flights(
+            'a', start_date='2026-09-10', end_date='2026-09-10',
+        )
+        self.assertEqual([flight.id for flight in filtered], ['f3', 'f2'])
+        self.assertEqual(
+            [(flight.exceedance_count, flight.miscmp_count) for flight in
+             self.flight_controller.list_flights('b')],
+            [(1, 0)],
+        )
+
     def test_summaries_do_not_load_reports_or_telemetry_and_use_one_query(self):
         queries = []
         self.connection.set_trace_callback(queries.append)
@@ -308,6 +351,57 @@ class FlightListPageTests(FlightDatabaseFixture, unittest.TestCase):
             self.page.load('a')
         fleet_query.assert_not_called()
 
+    def test_events_column_shows_counts_and_highlights_with_selected_row(self):
+        self.add_sample_events()
+        self.page._reload_rows()
+        self.assertEqual(self.page.table.columnCount(), 9)
+        self.assertEqual(self.page.table.horizontalHeaderItem(6).text(), 'EVENTS')
+        mixed = self.page.table.cellWidget(1, 6)
+        badges = mixed.findChildren(QLabel)
+        self.assertEqual(
+            [(badge.objectName(), badge.text()) for badge in badges],
+            [('flightExceedanceBadge', 'Exceedances 2'),
+             ('flightMiscmpBadge', 'MISCMP-P 1')],
+        )
+        self.assertEqual(
+            self.page.table.cellWidget(2, 6).findChildren(QLabel)[0].text(),
+            'MISCMP-P 1',
+        )
+        self.assertEqual(
+            self.page.table.cellWidget(0, 6).findChildren(QLabel)[0].text(),
+            '\N{EM DASH}',
+        )
+        self.page.row_checkboxes[1].setChecked(True)
+        self.assertTrue(mixed.property('rowSelected'))
+        self.page.row_checkboxes[1].setChecked(False)
+        self.assertFalse(mixed.property('rowSelected'))
+        self.single_date()
+        self.assertEqual(self.row_ids(), ['f3', 'f2'])
+        self.assertEqual(
+            self.page.table.cellWidget(0, 6).findChildren(QLabel)[0].text(),
+            'Exceedances 2',
+        )
+
+    def test_analysis_navigation_buttons_are_centered_and_blue_styled(self):
+        button = self.page.analysis_button
+        self.assertEqual(button.objectName(), 'analysisNavigation')
+        self.assertLess(abs(button.geometry().center().x() - self.page.width() / 2), 12)
+        dashboard = DashboardPage(self.aircraft_controller)
+        self.addCleanup(dashboard.deleteLater)
+        self.addCleanup(dashboard.close)
+        dashboard.resize(1280, 800)
+        dashboard.show()
+        self.app.processEvents()
+        fleet_button = next(
+            item for item in dashboard.findChildren(QPushButton)
+            if item.text() == 'Fleet Analysis'
+        )
+        self.assertEqual(fleet_button.objectName(), 'analysisNavigation')
+        self.assertLess(
+            abs(fleet_button.geometry().center().x() - dashboard.width() / 2), 12,
+        )
+        self.assertIn('QPushButton#analysisNavigation{background:#eff6ff', STYLE)
+
     def test_analysis_button_emits_only_the_current_aircraft_and_is_disabled_if_missing(self):
         requested = []
         self.page.analysis_requested.connect(requested.append)
@@ -404,6 +498,16 @@ class FlightListPageTests(FlightDatabaseFixture, unittest.TestCase):
         self.page.table.setCurrentCell(0, 1)
         self.page.open_current()
         self.assertEqual(received, ['f3'])
+
+    def test_each_flight_has_only_open_action_and_bulk_delete_remains_available(self):
+        for row in range(self.page.table.rowCount()):
+            actions = self.page.table.cellWidget(row, 8)
+            self.assertEqual(
+                [button.text() for button in actions.findChildren(QPushButton)],
+                ['Open'],
+            )
+        self.page.row_checkboxes[0].setChecked(True)
+        self.assertTrue(self.page.delete_btn.isVisible())
 
     def test_table_repaints_are_restored_even_if_population_fails(self):
         with patch.object(self.page, '_populate_rows', side_effect=RuntimeError('test')):

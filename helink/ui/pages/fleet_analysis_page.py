@@ -186,6 +186,9 @@ class FleetAnalysisPage(QWidget):
             self._allow_comparison = allow_comparison
             self._fixed_aircraft_id = aircraft_id if not allow_comparison else None
             self.title.setText('Fleet Analysis' if allow_comparison else 'Aircraft Analysis')
+            self.context.setVisible(not allow_comparison)
+            if allow_comparison:
+                self.context.clear()
             self.back_button.setText(
                 '\N{LEFTWARDS ARROW} Fleet' if allow_comparison
                 else '\N{LEFTWARDS ARROW} Flights'
@@ -203,6 +206,10 @@ class FleetAnalysisPage(QWidget):
             else:
                 aircraft = self.aircraft_controller.get(aircraft_id)
                 self.aircraft = [aircraft] if aircraft is not None else []
+            if not allow_comparison and self.aircraft:
+                self.title.setText(
+                    f'Aircraft Analysis - {self.aircraft[0].registration}'
+                )
             self.colors = {
                 item.id: _aircraft_color(index)
                 for index, item in enumerate(self.aircraft)
@@ -319,18 +326,14 @@ class FleetAnalysisPage(QWidget):
             )
         self.coverage.setText(coverage)
         self.view_flights.setVisible(self._allow_comparison and len(selected) == 1)
-        if len(selected) == 1:
-            item = selected[0]
-            self.context.setText(
-                f'Fleet Management / {item.registration} \N{MIDDLE DOT} '
-                f'{item.model} \N{MIDDLE DOT} SN {item.serial_number}'
-            )
-        elif self._allow_comparison:
-            self.context.setText(
-                'Fleet Management / Compare aircraft using the same parameter, dates and units.'
-            )
-        else:
-            self.context.setText('Fleet Management / Aircraft unavailable')
+        if not self._allow_comparison:
+            if len(selected) == 1:
+                item = selected[0]
+                self.context.setText(
+                    f'{item.model} \N{MIDDLE DOT} SN {item.serial_number}'
+                )
+            else:
+                self.context.setText('Aircraft unavailable')
         self.plot.show_trends(
             self.days, selected, self.colors, label, unit, statistic,
             empty_message=(

@@ -219,11 +219,7 @@ class CombinedTelemetryPlot(Plot):
 
     def _drag_view(self, event):
         if self._pressed_at is None:
-            self.setCursor(
-                Qt.OpenHandCursor
-                if self._point_count > 1 and event.inaxes in self._selection_axes
-                else Qt.ArrowCursor
-            )
+            self.setCursor(Qt.ArrowCursor)
             return
         dx = event.x - self._pressed_at[0]
         dy = event.y - self._pressed_at[1]
@@ -253,11 +249,7 @@ class CombinedTelemetryPlot(Plot):
         self._pressed_at = None
         self._pan_start = None
         self._dragged = False
-        self.setCursor(
-            Qt.OpenHandCursor
-            if self._point_count > 1 and event.inaxes in self._selection_axes
-            else Qt.ArrowCursor
-        )
+        self.setCursor(Qt.ArrowCursor)
         if (
             not dragged
             and (event.x - pressed_at[0]) ** 2 + (event.y - pressed_at[1]) ** 2 < 25
