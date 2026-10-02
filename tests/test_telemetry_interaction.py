@@ -24,7 +24,6 @@ from helink.ui.telemetry_parameters import (
     OVERVIEW_TELEMETRY_PARAMETERS, TELEMETRY_PARAMETERS,
 )
 from helink.ui.widgets import ChartFilterButton, Plot
-from helink.ui.widgets.combined_chart_toolbar import CombinedChartToolbar
 from helink.ui.widgets.combined_telemetry_plot import CombinedTelemetryPlot
 
 
@@ -40,6 +39,18 @@ def application():
 def click_canvas(plot, x, y, button=MouseButton.LEFT):
     event = MouseEvent('button_press_event', plot, x, y, button=button)
     plot.callbacks.process('button_press_event', event)
+    event = MouseEvent('button_release_event', plot, x, y, button=button)
+    plot.callbacks.process('button_release_event', event)
+
+
+def double_click_canvas(plot, x, y):
+    event = MouseEvent(
+        'button_press_event', plot, x, y,
+        button=MouseButton.LEFT, dblclick=True,
+    )
+    plot.callbacks.process('button_press_event', event)
+    event = MouseEvent('button_release_event', plot, x, y, button=MouseButton.LEFT)
+    plot.callbacks.process('button_release_event', event)
 
 
 def click_time(plot, index, height_fraction=0.06, button=MouseButton.LEFT):
@@ -82,7 +93,6 @@ class CombinedNavigationTests(unittest.TestCase):
     def setUp(self):
         self.plot = CombinedTelemetryPlot()
         self.plot.resize(1000, 560)
-        self.toolbar = CombinedChartToolbar(self.plot)
         self.plot.show()
         self.series = (
             ('N1', [90 + i * 0.05 for i in range(50)], '#2563eb', '%'),
@@ -96,9 +106,6 @@ class CombinedNavigationTests(unittest.TestCase):
         self.plot.point_selected.connect(self.received.append)
 
     def tearDown(self):
-        self.toolbar.clear_mode()
-        self.toolbar.close()
-        self.toolbar.deleteLater()
         self.plot.close()
         self.plot.deleteLater()
         self.app.processEvents()
@@ -108,22 +115,20 @@ class CombinedNavigationTests(unittest.TestCase):
         for axis in self.plot.unit_axes.values():
             self.assertEqual(axis.get_xlim(), expected)
 
-    def test_zoom_buttons_change_all_scales_and_reset_restores_entire_flight(self):
+    def test_wheel_zoom_changes_all_scales_and_double_click_restores_entire_flight(self):
         original_x = self.plot.ax.get_xlim()
         original_y = {unit: axis.get_ylim() for unit, axis in self.plot.unit_axes.items()}
-        self.toolbar.zoom_in_action.trigger()
+        wheel_canvas(self.plot, 120)
         self.assertLess(self.plot.ax.get_xlim()[1] - self.plot.ax.get_xlim()[0], 49)
         for unit, axis in self.plot.unit_axes.items():
             bottom, top = axis.get_ylim()
             old_bottom, old_top = original_y[unit]
             self.assertLess(top - bottom, old_top - old_bottom)
         self.assert_shared_timeline()
-        self.toolbar.zoom_out_action.trigger()
-        self.assertAlmostEqual(self.plot.ax.get_xlim()[0], original_x[0])
-        self.assertAlmostEqual(self.plot.ax.get_xlim()[1], original_x[1])
-        self.toolbar.pan_action.trigger()
-        self.toolbar.home()
-        self.assertFalse(self.toolbar.mode)
+        box = self.plot.ax.bbox
+        double_click_canvas(
+            self.plot, (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2,
+        )
         self.assertEqual(self.plot.ax.get_xlim(), original_x)
         self.assertEqual(
             {unit: axis.get_ylim() for unit, axis in self.plot.unit_axes.items()}, original_y,
@@ -145,7 +150,6 @@ class CombinedNavigationTests(unittest.TestCase):
         self.plot.draw()
         before_x = self.plot.ax.get_xlim()
         before_y = {unit: axis.get_ylim() for unit, axis in self.plot.unit_axes.items()}
-        self.toolbar.pan_action.trigger()
         box = self.plot.ax.bbox
         drag_canvas(
             self.plot, (box.x0 + box.width * 0.5, box.y0 + box.height * 0.5),
@@ -160,22 +164,25 @@ class CombinedNavigationTests(unittest.TestCase):
         ))
         self.assert_shared_timeline()
         self.assertEqual(self.received, [])
-        self.toolbar.pan_action.trigger()
         click_time(self.plot, 22)
         self.assertEqual(self.received, [22])
 
-    def test_zoom_rectangle_and_right_drag_zoom_out_keep_shared_scales(self):
-        self.toolbar.zoom_action.trigger()
+    def test_click_selects_but_drag_pans_without_changing_selection(self):
+        click_time(self.plot, 22)
+        self.assertEqual(self.received, [22])
+        self.plot.zoom_view(0.5)
+        self.plot.draw()
+        before = self.plot.ax.get_xlim()
         box = self.plot.ax.bbox
-        start = (box.x0 + box.width * 0.25, box.y0 + box.height * 0.25)
-        end = (box.x0 + box.width * 0.75, box.y0 + box.height * 0.75)
+        start = (box.x0 + box.width * 0.5, box.y0 + box.height * 0.5)
+        end = (box.x0 + box.width * 0.3, box.y0 + box.height * 0.4)
         drag_canvas(self.plot, start, end)
-        self.assertAlmostEqual(self.plot.ax.get_xlim()[1] - self.plot.ax.get_xlim()[0], 24.5, delta=0.1)
+        self.assertNotEqual(self.plot.ax.get_xlim(), before)
         self.assert_shared_timeline()
-        drag_canvas(self.plot, start, end, MouseButton.RIGHT)
-        self.assertAlmostEqual(self.plot.ax.get_xlim()[1] - self.plot.ax.get_xlim()[0], 49, delta=0.3)
-        self.assert_shared_timeline()
-        self.assertEqual(self.received, [])
+        self.assertEqual(self.received, [22])
+        double_click_canvas(self.plot, *start)
+        self.assertEqual(self.plot.ax.get_xlim(), (0, 49))
+        self.assertEqual(self.received, [22])
 
     def test_navigation_is_bounded_and_axes_labels_remain_visible(self):
         for _ in range(20):
@@ -818,12 +825,15 @@ class TelemetrySynchronizationTests(unittest.TestCase):
         self.tab.combine_charts_button.setChecked(True)
         self.app.processEvents()
         plot = self.tab.combined_plot
-        self.tab.combined_toolbar.zoom_in_action.trigger()
+        wheel_canvas(plot, 120)
         self.assert_synchronized(0)
-        self.tab.combined_toolbar.pan_action.trigger()
-        click_time(plot, 4)
+        plot.draw()
+        box = plot.ax.bbox
+        drag_canvas(
+            plot, (box.x0 + box.width * 0.5, box.y0 + box.height * 0.5),
+            (box.x0 + box.width * 0.35, box.y0 + box.height * 0.4),
+        )
         self.assert_synchronized(0)
-        self.tab.combined_toolbar.pan_action.trigger()
         plot.draw()
         text = plot.legend.get_texts()[3]
         bounds = text.get_window_extent(plot.get_renderer())
@@ -831,7 +841,10 @@ class TelemetrySynchronizationTests(unittest.TestCase):
         self.assert_synchronized(11)
         self.assertLessEqual(plot.ax.get_xlim()[0], 11)
         self.assertGreaterEqual(plot.ax.get_xlim()[1], 11)
-        self.tab.combined_toolbar.home()
+        box = plot.ax.bbox
+        double_click_canvas(
+            plot, (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2,
+        )
         self.assert_synchronized(11)
         self.assertEqual(plot.ax.get_xlim(), (0, 11))
 
@@ -849,9 +862,8 @@ class TelemetrySynchronizationTests(unittest.TestCase):
         )
         self.tab.combine_charts_button.setChecked(True)
         self.assertEqual(self.tab.combined_plot.ax.get_xlim(), zoomed)
-        self.tab.combined_toolbar.pan_action.trigger()
         self.tab.load(self.tab.flight)
-        self.assertFalse(self.tab.combined_toolbar.mode)
+        self.assertIsNone(self.tab.combined_plot._pressed_at)
         self.assertEqual(self.tab.combined_plot.ax.get_xlim(), (0, 11))
 
     def test_new_flight_in_separate_mode_does_not_inherit_previous_combined_zoom(self):

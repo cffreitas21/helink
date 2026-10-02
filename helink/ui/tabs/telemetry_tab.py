@@ -22,7 +22,6 @@ from helink.ui.telemetry_parameters import (
     OVERVIEW_TELEMETRY_PARAMETERS, TELEMETRY_PARAMETERS,
 )
 from helink.ui.widgets import Card, ChartFilterButton, CombinedTelemetryPlot, Plot
-from helink.ui.widgets.combined_chart_toolbar import CombinedChartToolbar
 
 
 class TelemetryTab(QWidget):
@@ -167,15 +166,13 @@ class TelemetryTab(QWidget):
         self.combined_plot = CombinedTelemetryPlot()
         self.combined_plot.setMinimumHeight(560)
         self.combined_plot.setToolTip(
-            'Scroll over the plot to zoom. Use Pan to drag or Zoom Area to select a region. '
-            'Turn navigation off to select a timestamp or a MAX legend entry.'
+            'Scroll to zoom, drag to move the view, and double-click to show the full flight. '
+            'Click a point or a MAX legend entry to select its timestamp.'
         )
         combined_heading = QHBoxLayout()
         combined_title = self.combined_card.layout.takeAt(0).widget()
         combined_heading.addWidget(combined_title)
         combined_heading.addStretch()
-        self.combined_toolbar = CombinedChartToolbar(self.combined_plot, self.combined_card)
-        combined_heading.addWidget(self.combined_toolbar)
         self.combined_card.layout.addLayout(combined_heading)
         self.combined_plot.point_selected.connect(self.slider.setValue)
         self.combined_card.layout.addWidget(self.combined_plot)
@@ -340,10 +337,8 @@ class TelemetryTab(QWidget):
             preserve_view=not (reset_view or self._reset_combined_view),
         )
         self._reset_combined_view = False
-        self.combined_toolbar.setEnabled(len(self.data) > 1)
 
     def load(self, flight):
-        self.combined_toolbar.clear_mode()
         self._reset_combined_view = True
         self.flight = flight
         self.data = flight.engine_data or flight.data_log

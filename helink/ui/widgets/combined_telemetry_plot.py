@@ -1,6 +1,7 @@
 from math import isfinite
 
-from matplotlib.backend_bases import MouseEvent
+from PySide6.QtCore import Qt
+from matplotlib.backend_bases import MouseButton, MouseEvent
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 from helink.ui.widgets.plot import Plot
@@ -16,9 +17,18 @@ class CombinedTelemetryPlot(Plot):
         self.legend = None
         self._full_xlim = (0, 1)
         self._full_ylims = {}
+        self._pressed_at = None
+        self._pan_start = None
+        self._dragged = False
         self.mpl_connect('scroll_event', self._scroll_zoom)
+        self.mpl_connect('motion_notify_event', self._drag_view)
+        self.mpl_connect('button_release_event', self._release_view)
 
     def parameters(self, series, time_labels=(), cursor=0, *, render=True, preserve_view=False):
+        self._pressed_at = None
+        self._pan_start = None
+        self._dragged = False
+        self.setCursor(Qt.ArrowCursor)
         previous_x = self.ax.get_xlim() if preserve_view and self._point_count else None
         previous_y = (
             {unit: axis.get_ylim() for unit, axis in self.unit_axes.items()}
@@ -105,9 +115,6 @@ class CombinedTelemetryPlot(Plot):
         for axis in self._selection_axes:
             axis.callbacks.connect('xlim_changed', self._invalidate_cursor)
             axis.callbacks.connect('ylim_changed', self._invalidate_cursor)
-        toolbar = getattr(self, 'toolbar', None)
-        if toolbar is not None:
-            toolbar.update()
         if previous_x is not None:
             self.ax.set_xlim(previous_x)
             for unit, axis in self.unit_axes.items():
@@ -189,8 +196,72 @@ class CombinedTelemetryPlot(Plot):
         super().wheelEvent(event)
 
     def _select_point(self, event):
-        toolbar = getattr(self, 'toolbar', None)
-        if toolbar is None or not toolbar.mode:
+        # Delay selection until release: the same left button can start a pan.
+        if event.button != MouseButton.LEFT:
+            return
+        if event.dblclick:
+            self._pressed_at = None
+            self._pan_start = None
+            self._dragged = False
+            if event.inaxes in self._selection_axes:
+                self.reset_view()
+            return
+        self._pressed_at = (event.x, event.y)
+        self._dragged = False
+        self._pan_start = (
+            (
+                self.ax.get_xlim(),
+                {unit: axis.get_ylim() for unit, axis in self.unit_axes.items()},
+            )
+            if self._point_count > 1 and event.inaxes in self._selection_axes
+            else None
+        )
+
+    def _drag_view(self, event):
+        if self._pressed_at is None:
+            self.setCursor(
+                Qt.OpenHandCursor
+                if self._point_count > 1 and event.inaxes in self._selection_axes
+                else Qt.ArrowCursor
+            )
+            return
+        dx = event.x - self._pressed_at[0]
+        dy = event.y - self._pressed_at[1]
+        if not self._dragged and dx * dx + dy * dy < 25:
+            return
+        self._dragged = True
+        if self._pan_start is None:
+            return
+        self.setCursor(Qt.ClosedHandCursor)
+        box = self.ax.bbox
+        if not box.width or not box.height:
+            return
+        (left, right), y_limits = self._pan_start
+        x_shift = dx * (right - left) / box.width
+        self.ax.set_xlim(left - x_shift, right - x_shift)
+        for unit, axis in self.unit_axes.items():
+            bottom, top = y_limits[unit]
+            y_shift = dy * (top - bottom) / box.height
+            axis.set_ylim(bottom - y_shift, top - y_shift)
+        self.limit_view()
+
+    def _release_view(self, event):
+        if event.button != MouseButton.LEFT or self._pressed_at is None:
+            return
+        pressed_at = self._pressed_at
+        dragged = self._dragged
+        self._pressed_at = None
+        self._pan_start = None
+        self._dragged = False
+        self.setCursor(
+            Qt.OpenHandCursor
+            if self._point_count > 1 and event.inaxes in self._selection_axes
+            else Qt.ArrowCursor
+        )
+        if (
+            not dragged
+            and (event.x - pressed_at[0]) ** 2 + (event.y - pressed_at[1]) ** 2 < 25
+        ):
             super()._select_point(event)
 
     def move_cursor(self, index):
