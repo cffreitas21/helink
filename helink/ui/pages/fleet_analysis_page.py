@@ -5,7 +5,7 @@ from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QComboBox, QFrame, QHBoxLayout, QHeaderView, QLabel, QLayout,
-    QMessageBox, QPushButton, QScrollArea, QSpinBox, QTableWidget, QTableWidgetItem,
+    QMessageBox, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 
@@ -17,6 +17,7 @@ from helink.ui.widgets.aircraft_day_details import AircraftDayDetails
 from helink.ui.widgets.aircraft_trend_plot import AircraftTrendPlot
 from helink.ui.widgets.card import Card
 from helink.ui.widgets.flight_date_filter_button import FlightDateFilterButton
+from helink.ui.widgets.flight_duration_filter_button import FlightDurationFilterButton
 
 
 PARAMETERS = TELEMETRY_PARAMETERS + OVERVIEW_TELEMETRY_PARAMETERS
@@ -115,25 +116,10 @@ class FleetAnalysisPage(QWidget):
         self.date_filter = FlightDateFilterButton()
         self.date_filter.range_changed.connect(self._reload)
         toolbar.addWidget(self.date_filter)
-        minimum_label = QLabel('Min. duration')
-        self.minimum_minutes = QSpinBox()
-        self.minimum_minutes.setObjectName('fleetMinimumDuration')
-        self.minimum_minutes.setAccessibleName('Minimum flight duration in minutes')
-        self.minimum_minutes.setToolTip(
-            'Exclude shorter flights from the chart and daily totals. '
-            '0 min includes all flights. Flights without a calculable duration '
-            'are excluded when a minimum is set.'
-        )
-        self.minimum_minutes.setRange(0, 1440)
-        self.minimum_minutes.setSingleStep(1)
-        self.minimum_minutes.setSuffix(' min')
-        self.minimum_minutes.setFixedWidth(108)
-        self.minimum_minutes.setKeyboardTracking(False)
-        self.minimum_minutes.setAccelerated(True)
-        self.minimum_minutes.valueChanged.connect(self._reload)
-        minimum_label.setBuddy(self.minimum_minutes)
-        toolbar.addWidget(minimum_label)
-        toolbar.addWidget(self.minimum_minutes)
+        self.duration_filter = FlightDurationFilterButton()
+        self.minimum_minutes = self.duration_filter.minimum_minutes
+        self.duration_filter.minimum_changed.connect(self._reload)
+        toolbar.addWidget(self.duration_filter)
         root.addLayout(toolbar)
 
         chart = Card()

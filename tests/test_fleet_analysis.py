@@ -12,7 +12,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtCore import QDate, QPoint, QPointF, Qt, Signal
 from PySide6.QtGui import QFontDatabase, QWheelEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QPushButton, QToolButton, QWidget
+from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QPushButton, QToolButton, QWidget
 from matplotlib.backend_bases import MouseEvent
 
 from helink.controllers.aircraft_controller import AircraftController
@@ -381,6 +381,8 @@ class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
         self.page = FleetAnalysisPage(self.controller)
         self.addCleanup(self.page.deleteLater)
         self.addCleanup(self.page.close)
+        # Existing chart tests exercise the unfiltered dataset explicitly.
+        self.page.minimum_minutes.setValue(0)
         self.page.resize(1200, 850)
         self.page.show()
         self.page.load('a')
@@ -397,6 +399,16 @@ class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
         self.assertIn('\u00b0C', self.page.plot.ax.get_ylabel())
         _, _, dates, _ = self.page.plot.series[0]
         self.assertEqual(dates[1] - dates[0], 9)
+
+    def test_new_analysis_starts_with_a_twenty_minute_minimum(self):
+        page = FleetAnalysisPage(self.controller)
+        self.addCleanup(page.deleteLater)
+        self.addCleanup(page.close)
+        self.assertEqual(page.minimum_minutes.value(), 20)
+        self.assertEqual(page.duration_filter.currentText(), 'Flights: 20+ min')
+        self.assertTrue(page.duration_filter.preset_buttons[20].property('selected'))
+        page.load('a')
+        self.assertEqual(page.days, [])
 
     def test_minute_control_updates_chart_totals_and_flight_breakdown(self):
         self.connection.executemany(
@@ -421,6 +433,56 @@ class FleetAnalysisPageTests(TrendFixture, unittest.TestCase):
         self.page.minimum_minutes.setValue(0)
         self.assertEqual(self.page.days[0].average, 95)
         self.assertEqual(self.page.comparison.item(0, 2).text(), '95.0')
+
+    def test_duration_popup_offers_presets_and_custom_minutes(self):
+        self.connection.executemany(
+            'UPDATE flights SET arrival_time=?, duration=? WHERE id=?',
+            (
+                ('08:05:00', '5 min', 'a1'),
+                ('14:30:00', '30 min', 'a2'),
+            ),
+        )
+        control = self.page.duration_filter
+        self.assertEqual(control.currentText(), 'Flights: All')
+        self.assertTrue(control.preset_buttons[0].property('selected'))
+        control.showPopup()
+        self.app.processEvents()
+        self.assertTrue(control._popup_menu.isVisible())
+        QTest.mouseClick(control.preset_buttons[10], Qt.LeftButton)
+        self.app.processEvents()
+        self.assertEqual(control.currentText(), 'Flights: 10+ min')
+        self.assertEqual(self.page.minimum_minutes.value(), 10)
+        self.assertEqual(self.page.days[0].average, 100)
+        self.assertTrue(control.preset_buttons[10].property('selected'))
+        self.assertFalse(control._popup_menu.isVisible())
+        control.preset_buttons[20].click()
+        self.assertEqual(control.currentText(), 'Flights: 20+ min')
+        self.assertEqual(self.page.minimum_minutes.value(), 20)
+        self.page.minimum_minutes.setValue(11)
+        self.assertEqual(control.currentText(), 'Flights: 11+ min')
+        self.assertFalse(control.preset_buttons[10].property('selected'))
+        QTest.mouseClick(control.preset_buttons[0], Qt.LeftButton)
+        self.assertEqual(control.currentText(), 'Flights: All')
+        self.assertEqual(self.page.minimum_minutes.value(), 0)
+
+    def test_minute_step_buttons_use_their_full_click_area(self):
+        control = self.page.duration_filter
+        control.showPopup()
+        self.app.processEvents()
+        self.assertEqual(
+            self.page.minimum_minutes.buttonSymbols(), QAbstractSpinBox.NoButtons,
+        )
+        QTest.mouseClick(
+            control.increase_button, Qt.LeftButton,
+            pos=QPoint(4, control.increase_button.height() // 2),
+        )
+        self.assertEqual(self.page.minimum_minutes.value(), 1)
+        QTest.mouseClick(
+            control.decrease_button, Qt.LeftButton,
+            pos=QPoint(4, control.decrease_button.height() // 2),
+        )
+        self.assertEqual(self.page.minimum_minutes.value(), 0)
+        control.hidePopup()
 
     def test_typed_minimum_commits_once_and_empty_filter_is_explained(self):
         self.connection.execute(

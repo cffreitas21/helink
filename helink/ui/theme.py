@@ -129,9 +129,10 @@ QLabel#fleetParameterStatistic{color:#64748b;font-size:10px;font-weight:800}
 
 QLabel#fleetFlightCount{color:#2563eb;font-size:10px;font-weight:750}
 
-QComboBox#flightSort,QComboBox#flightDateFilter{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650}
-QComboBox#flightSort:hover,QComboBox#flightDateFilter:hover{background:#f8fbff;border-color:#7aa7e8}
-QComboBox#flightSort:focus,QComboBox#flightDateFilter:focus{border:2px solid #2563eb}
+QComboBox#flightSort,QComboBox#flightDateFilter,QComboBox#fleetDurationFilter{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650}
+QComboBox#flightSort:hover,QComboBox#flightDateFilter:hover,QComboBox#fleetDurationFilter:hover{background:#f8fbff;border-color:#7aa7e8}
+QComboBox#flightSort:focus,QComboBox#flightDateFilter:focus,QComboBox#fleetDurationFilter:focus{border:2px solid #2563eb}
+QComboBox#fleetDurationFilter[filterActive="true"]{background:#eff6ff;border-color:#60a5fa;color:#1e3a8a}
 QComboBox#fleetAnalysisFilter{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650}
 QComboBox#fleetAnalysisFilter:hover{background:#f8fbff;border-color:#7aa7e8}
 QComboBox#fleetAnalysisFilter:focus{border:2px solid #2563eb}
@@ -154,6 +155,14 @@ QTableWidget#fleetComparisonTable QHeaderView::section{background:#e8eef6;color:
 QWidget#flightDateFilterContent{background:#ffffff}
 QLabel#flightDateFilterTitle{font-size:14px;font-weight:750;color:#0f172a}
 QLabel#flightDateFilterError{color:#b91c1c;font-size:12px}
+QWidget#flightDurationFilterContent{background:#ffffff}
+QLabel#flightDurationFilterTitle{font-size:14px;font-weight:750;color:#0f172a}
+QPushButton#durationPreset{background:#ffffff;color:#1e293b;border:1px solid #cbd5e1;border-radius:6px;padding:7px 5px;font-weight:650}
+QPushButton#durationPreset:hover{background:#eff6ff;border-color:#60a5fa}
+QPushButton#durationPreset[selected="true"]{background:#dbeafe;color:#1e3a8a;border-color:#60a5fa}
+QPushButton#durationStepButton{background:#ffffff;color:#1e3a8a;border:1px solid #aebed2;border-radius:7px;padding:0px;font-size:18px;font-weight:700}
+QPushButton#durationStepButton:hover{background:#dbeafe;border-color:#60a5fa}
+QPushButton#durationStepButton:disabled{background:#f1f5f9;color:#94a3b8;border-color:#cbd5e1}
 
 QLabel#telemetryToolbarTitle{color:#334155;font-size:12px;font-weight:700}
 QSlider#telemetryTimeline::groove:horizontal{height:6px;background:#e2e8f0;border:none;border-radius:3px}

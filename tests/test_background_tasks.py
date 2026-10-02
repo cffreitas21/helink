@@ -435,6 +435,8 @@ class BackgroundTasksTests(unittest.TestCase):
         page = window.fleet_analysis
         self.assertEqual(page._selected_aircraft_ids(), ('a',))
         self.assertTrue(page.aircraft_selector.isHidden())
+        page.minimum_minutes.setValue(0)
+        self.wait_until(lambda: not window.tasks.busy)
         page.parameter.setCurrentIndex(page.parameter.findData('eng_ot'))
         self.wait_until(lambda: not window.tasks.busy)
         self.assertEqual(page.days[0].average, 81)
@@ -463,7 +465,8 @@ class BackgroundTasksTests(unittest.TestCase):
         window.navigation_controller.show_aircraft_analysis('a')
         self.wait_until(lambda: not window.tasks.busy)
         page = window.fleet_analysis
-        self.assertEqual(len(page.days), 2)
+        self.assertEqual(page.minimum_minutes.value(), 20)
+        self.assertEqual(page.days, [])
         page.minimum_minutes.setValue(10)
         self.wait_until(lambda: not window.tasks.busy)
         self.assertEqual([day.flight_date for day in page.days], ['2026-09-02'])
