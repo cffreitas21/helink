@@ -19,7 +19,7 @@ class Sidebar(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 22, 16, 18)
 
-        tagline = QLabel('Helicopter Flight Analysis & Maintenance \nAW119MKII Nxi')
+        tagline = QLabel('Helicopter Flight Analysis & Maintenance \n\nAW119MKII Nxi')
         tagline.setWordWrap(True)
         tagline.setStyleSheet('color:#94a3b8')
         layout.addWidget(tagline)

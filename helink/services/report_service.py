@@ -11,11 +11,19 @@ from helink.services.maintenance_report_builder import (
 
 
 class ReportService:
-    def __init__(self, flights):
+    def __init__(self, flights, aircraft):
         self.flights = flights
+        self.aircraft = aircraft
+
+    def _records(self, flight_id):
+        flight = self.flights.find_by_id(flight_id)
+        if flight is None:
+            raise ValueError('The selected flight is no longer available.')
+        return flight, self.aircraft.find_by_id(flight.aircraft_id)
 
     def generate(self, flight_id):
-        report = technical_report(self.flights.find_by_id(flight_id))
+        flight, aircraft = self._records(flight_id)
+        report = technical_report(flight, aircraft)
         self.flights.save_report(flight_id, report)
         return report
 
@@ -23,8 +31,8 @@ class ReportService:
         destination = Path(destination)
         if destination.suffix.lower() != '.pdf':
             destination = destination.with_suffix('.pdf')
-        flight = self.flights.find_by_id(flight_id)
-        report = technical_report(flight)
+        flight, aircraft = self._records(flight_id)
+        report = technical_report(flight, aircraft)
         self.flights.save_report(flight_id, report)
 
         printer = QPrinter(QPrinter.HighResolution)
@@ -37,7 +45,7 @@ class ReportService:
         )
         document = QTextDocument()
         document.setDocumentMargin(0)
-        document.setHtml(technical_report_html(flight))
+        document.setHtml(technical_report_html(flight, aircraft))
         document.print_(printer)
         if not destination.exists() or destination.stat().st_size == 0:
             raise RuntimeError('The PDF report could not be created.')

@@ -1,9 +1,13 @@
 from __future__ import annotations
+from dataclasses import replace
 from datetime import date
 
 from helink.repositories import FlightRepository
 from helink.repositories.aircraft_repository import AircraftRepository
 from helink.services.flight_details_service import prepare_flight_details
+from helink.services.preventive_maintenance_service import (
+    LIMITS, assess_preventive_maintenance, aw119_limits_apply,
+)
 
 
 class FlightController:
@@ -40,9 +44,49 @@ class FlightController:
         end = date.fromisoformat(str(end_date)).isoformat() if end_date else None
         if start and end and start > end:
             raise ValueError('The start date must not be after the end date.')
-        return self.repository.find_summaries(
+        flights = self.repository.find_summaries(
             aircraft_id, start_date=start, end_date=end, descending=descending,
         )
+        if not flights:
+            return flights
+
+        aircraft_repository = AircraftRepository(self.repository.database)
+        models = {}
+        for item in flights:
+            if item.aircraft_id not in models:
+                aircraft = aircraft_repository.find_by_id(item.aircraft_id)
+                models[item.aircraft_id] = aircraft.model if aircraft else ''
+        applicable_ids = [
+            item.id for item in flights
+            if aw119_limits_apply(models[item.aircraft_id])
+        ]
+        candidates = self.repository.find_engine_limit_candidates(
+            applicable_ids, LIMITS,
+        )
+        result = []
+        for flight in flights:
+            model = models[flight.aircraft_id]
+            if not aw119_limits_apply(model):
+                status = 'not_applicable'
+            elif flight.id not in candidates:
+                status = (
+                    'normal' if self.repository.has_limit_parameter_data(flight.id)
+                    else 'unavailable'
+                )
+            else:
+                rows = self.repository.find_engine_limit_rows(flight.id)
+                assessment = assess_preventive_maintenance(
+                    replace(flight, engine_data=rows), model,
+                )
+                status = (
+                    'critical' if any(
+                        event.severity == 'critical'
+                        for event in assessment.events
+                    )
+                    else 'review' if assessment.events else 'normal'
+                )
+            result.append(replace(flight, preventive_status=status))
+        return result
 
     def get(self, flight_id):
         return self.repository.find_by_id(flight_id)

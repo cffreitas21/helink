@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from helink.services.report_service import ReportService
 from helink.repositories.flight_repository import FlightRepository
+from helink.repositories.aircraft_repository import AircraftRepository
 
 
 class ReportController:
@@ -14,7 +15,9 @@ class ReportController:
     def request_export(self, flight_id, destination, on_result, on_error):
         def export(database, _progress):
             repository = FlightRepository(database)
-            path = ReportService(repository).export_pdf(flight_id, destination)
+            path = ReportService(
+                repository, AircraftRepository(database),
+            ).export_pdf(flight_id, destination)
             return path, repository.find_metadata_by_id(flight_id).predictive_report
         return self.tasks.write(
             export,

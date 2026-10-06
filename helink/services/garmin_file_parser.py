@@ -7,6 +7,7 @@ import uuid
 import zipfile
 from datetime import datetime, timedelta
 from functools import lru_cache
+from math import isfinite
 from pathlib import Path
 from typing import Any, Callable
 
@@ -48,12 +49,13 @@ class _ParsedRow(dict):
         self.normalized = {_norm(key): value for key, value in values.items()}
 
 
-def _num(value: Any, default=0.0) -> float:
+def _num(value: Any) -> float | None:
     try:
         text = str(value).strip().replace(' ', '').replace(',', '.')
-        return float(text) if text else default
+        number = float(text)
     except (TypeError, ValueError):
-        return default
+        return None
+    return number if isfinite(number) else None
 
 
 def _read(
@@ -215,6 +217,16 @@ def _format_issue(kind, headers, rows):
     return ''
 
 
+def _date(value):
+    text = str(value or '').strip()
+    for pattern in ('%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d'):
+        try:
+            return datetime.strptime(text, pattern).date().isoformat()
+        except ValueError:
+            continue
+    return ''
+
+
 def _stamp(name: str):
     upper = name.upper()
     match = re.search(
@@ -222,23 +234,29 @@ def _stamp(name: str):
         upper,
     )
     if match:
-        return (
-            f'{match[1]}-{match[2]}-{match[3]}',
-            f'{match[4]}:{match[5]}:{match[6]}',
-            match[7],
-        )
+        date = _date(f'{match[1]}-{match[2]}-{match[3]}')
+        if date:
+            return date, f'{match[4]}:{match[5]}:{match[6]}', match[7]
+    match = re.search(
+        r'LOG_(20\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_([A-Z0-9]{3,4})',
+        upper,
+    )
+    if match:
+        date = _date(f'{match[1]}-{match[2]}-{match[3]}')
+        if date:
+            return date, f'{match[4]}:{match[5]}:{match[6]}', match[7]
     match = re.search(
         r'LOG_(\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_([A-Z0-9]{3,4})',
         upper,
     )
     if match:
-        return (
-            f'20{match[1]}-{match[2]}-{match[3]}',
-            f'{match[4]}:{match[5]}:{match[6]}',
-            match[7],
-        )
-    now = datetime.now()
-    return now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), '-'
+        date = _date(f'20{match[1]}-{match[2]}-{match[3]}')
+        if date:
+            return date, f'{match[4]}:{match[5]}:{match[6]}', match[7]
+    match = re.search(r'(?<!\d)20\d{2}-\d{2}-\d{2}(?!\d)', upper)
+    if match and (date := _date(match[0])):
+        return date, '', '-'
+    return '', '', '-'
 
 
 def _clock_time(value):
@@ -326,8 +344,8 @@ def _moment(value, flight_date):
 
 def _row_moment(row, flight_date):
     value = _get(row, 'Timestamp', 'Lcl Time', 'Time')
-    row_date = _get(row, 'Lcl Date', 'Date')
-    return _moment(value, str(row_date).strip() or flight_date)
+    row_date = _date(_get(row, 'Lcl Date', 'Date'))
+    return _moment(value, row_date or flight_date)
 
 
 def _file_window(rows, flight_date, fallback_time):
@@ -565,9 +583,19 @@ def parse_files(
             continue
 
         date, time, origin = _stamp(name)
+        if not date and target_flight is not None:
+            date = target_flight['flight_date']
+            time = target_flight.get('departure_time') or ''
         start, end = _file_window(rows, date, time)
         if start is not None:
             date, time = start.date().isoformat(), start.strftime('%H:%M:%S')
+        if not date:
+            skipped.append((
+                name,
+                'Flight date could not be determined. Include a date in the '
+                'file name or CSV records, or add the file to a specific flight.',
+            ))
+            continue
         prepared.append({
             'name': name, 'label': label, 'kind': kind, 'rows': rows,
             'date': date, 'time': time, 'origin': origin,

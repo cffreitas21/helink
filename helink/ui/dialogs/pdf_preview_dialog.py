@@ -15,7 +15,7 @@ class PdfPreviewDialog(QDialog):
         super().__init__(parent)
         self.pdf_path = Path(pdf_path)
         self.suggested_name = suggested_name
-        self.setWindowTitle('Maintenance Report ? PDF Preview')
+        self.setWindowTitle('Flight Report - PDF Preview')
         self.resize(980, 760)
         self.setMinimumSize(760, 560)
 
@@ -24,12 +24,12 @@ class PdfPreviewDialog(QDialog):
         root.setSpacing(10)
 
         toolbar = QHBoxLayout()
-        title = QLabel('Maintenance Report Preview')
+        title = QLabel('Flight Report Preview')
         title.setObjectName('title')
         toolbar.addWidget(title)
         toolbar.addStretch()
 
-        zoom_out = QPushButton('?')
+        zoom_out = QPushButton('-')
         zoom_out.setObjectName('secondary')
         zoom_out.setFixedSize(38, 34)
         zoom_out.setToolTip('Zoom out')
@@ -92,7 +92,7 @@ class PdfPreviewDialog(QDialog):
     def save_pdf(self):
         destination, _ = QFileDialog.getSaveFileName(
             self,
-            'Save Maintenance Report',
+            'Save Flight Report',
             self.suggested_name,
             'PDF Document (*.pdf)',
         )

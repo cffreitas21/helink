@@ -35,7 +35,9 @@ def build_main_window(database_path: Path | None = None) -> MainWindow:
         import_controller=ImportController(
             FlightImportService(flight_repository), tasks,
         ),
-        report_controller=ReportController(ReportService(flight_repository), tasks),
+        report_controller=ReportController(
+            ReportService(flight_repository, aircraft_repository), tasks,
+        ),
         database_controller=DatabaseController(
             DatabaseTransferService(database), database, tasks,
         ),

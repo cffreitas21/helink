@@ -24,6 +24,12 @@ QLineEdit,QComboBox,QSpinBox,QDoubleSpinBox{background:#ffffff;color:#111827;bor
 QTableWidget{background:#ffffff;alternate-background-color:#eef2f7;color:#111827;border:1px solid #94a3b8;border-radius:9px;gridline-color:#cbd5e1;selection-background-color:#bfdbfe;selection-color:#0f172a} QHeaderView::section{background:#e2e8f0;padding:9px;border:none;border-right:1px solid #cbd5e1;border-bottom:1px solid #94a3b8;font-weight:700;color:#1e293b}
 QTabWidget::pane{border:1px solid #94a3b8;background:#ffffff} QTabBar::tab{background:#cbd5e1;color:#334155;border:1px solid #94a3b8;padding:9px 16px;font-weight:600} QTabBar::tab:hover{background:#dbeafe;color:#1e3a8a} QTabBar::tab:selected{background:#ffffff;color:#1d4ed8;border-bottom-color:#ffffff;font-weight:750}
 QTextEdit,QListWidget{background:#ffffff;color:#111827;border:1px solid #94a3b8;border-radius:8px;padding:8px;selection-background-color:#bfdbfe;selection-color:#0f172a}
+QFrame#flightReportToolbar{background:#eef4fb;border:1px solid #b8c8da;border-radius:10px}
+QLabel#flightReportTitle{color:#0f172a;font-size:17px;font-weight:800}
+QLabel#flightReportHint{color:#475569;font-size:12px}
+QPushButton#flightReportPreview{background:#0b1220;color:#ffffff;border:1px solid #0b1220;border-radius:8px;padding:10px 16px;font-weight:750}
+QPushButton#flightReportPreview:hover{background:#1e293b;border-color:#1e293b}
+QTextBrowser#flightReportDocument{background:#ffffff;color:#111827;border:1px solid #b8c8da;border-radius:9px;padding:10px;selection-background-color:#bfdbfe;selection-color:#0f172a}
 QScrollArea{background:transparent;border:none} QScrollBar:vertical{background:#e2e8f0;width:11px;margin:2px} QScrollBar::handle:vertical{background:#64748b;border-radius:5px;min-height:32px} QScrollBar::handle:vertical:hover{background:#475569} QToolTip{background:#0f172a;color:#ffffff;border:1px solid #334155;padding:6px}
 
 QLabel#listSummary{color:#475569;font-size:12px;font-weight:600}
@@ -198,9 +204,14 @@ QTableWidget#preventiveTable QHeaderView::section{background:#e8eef6;color:#2534
 
 QLabel#selectionCount{background:transparent;color:#64748b;padding:5px 8px;font-size:11px;font-weight:650}
 QLabel#selectionCount[active="true"]{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd;border-radius:10px;font-weight:750}
-QWidget#selectionCell,QWidget#flightCell,QWidget#flightEventCell,QWidget#tableActions{background:transparent;border:none;border-right:1px solid #d3dce8}
-QWidget#selectionCell[rowSelected="true"],QWidget#flightCell[rowSelected="true"],QWidget#flightEventCell[rowSelected="true"],QWidget#tableActions[rowSelected="true"]{background:#dbeafe}
+QWidget#selectionCell,QWidget#flightCell,QWidget#flightEventCell,QWidget#flightPreventiveCell,QWidget#tableActions{background:transparent;border:none;border-right:1px solid #d3dce8}
+QWidget#selectionCell[rowSelected="true"],QWidget#flightCell[rowSelected="true"],QWidget#flightEventCell[rowSelected="true"],QWidget#flightPreventiveCell[rowSelected="true"],QWidget#tableActions[rowSelected="true"]{background:#dbeafe}
 QWidget#selectionCell[rowSelected="true"]{border-left:3px solid #2563eb}
 QLabel#flightExceedanceBadge{background:#fee2e2;color:#991b1b;border:1px solid #ef9a9a;border-radius:7px;padding:2px 4px;font-size:11px;font-weight:750}
 QLabel#flightMiscmpBadge{background:#f3e8ff;color:#7e22ce;border:1px solid #c084fc;border-radius:7px;padding:2px 4px;font-size:11px;font-weight:750}
+QLabel#flightPmCritical,QLabel#flightPmReview,QLabel#flightPmNormal,QLabel#flightPmUnavailable{border-radius:7px;padding:3px 5px;font-size:11px;font-weight:750}
+QLabel#flightPmCritical{background:#fee2e2;color:#991b1b;border:1px solid #ef9a9a}
+QLabel#flightPmReview{background:#fef3c7;color:#92400e;border:1px solid #e8c85f}
+QLabel#flightPmNormal{background:#dcfce7;color:#166534;border:1px solid #86d6a0}
+QLabel#flightPmUnavailable{background:#e2e8f0;color:#475569;border:1px solid #b8c4d1}
 '''

@@ -124,7 +124,7 @@ class FlightListPage(QWidget):
         self.filter_message.hide()
         root.addWidget(self.filter_message)
 
-        self.table = QTableWidget(0, 9)
+        self.table = QTableWidget(0, 10)
         self.table.setObjectName('flightTable')
 
         self.selection_header = SelectAllHeader(
@@ -136,21 +136,24 @@ class FlightListPage(QWidget):
         self.table.setHorizontalHeader(self.selection_header)
         self.table.setHorizontalHeaderLabels([
             '', 'FLIGHT DATE', 'DEPARTURE', 'ARRIVAL', 'DURATION',
-            'ROUTE', 'EVENTS', 'IMPORTED FILES', 'ACTIONS',
+            'ROUTE', 'EVENTS', 'PREVENTIVE\nMAINTENANCE',
+            'IMPORTED FILES', 'ACTIONS',
         ])
 
         header = self.table.horizontalHeader()
-        for column in range(8):
+        for column in range(10):
             header.setSectionResizeMode(column, QHeaderView.Fixed)
-        header.setSectionResizeMode(8, QHeaderView.Stretch)
-        self.table.setColumnWidth(0, 54)
-        self.table.setColumnWidth(1, 135)
-        self.table.setColumnWidth(2, 100)
-        self.table.setColumnWidth(3, 100)
-        self.table.setColumnWidth(4, 150)
-        self.table.setColumnWidth(5, 150)
-        self.table.setColumnWidth(6, 135)
-        self.table.setColumnWidth(7, 135)
+        header.setFixedHeight(49)
+        self.table.setColumnWidth(0, 44)
+        self.table.setColumnWidth(1, 120)
+        self.table.setColumnWidth(2, 92)
+        self.table.setColumnWidth(3, 92)
+        self.table.setColumnWidth(4, 145)
+        self.table.setColumnWidth(5, 125)
+        self.table.setColumnWidth(6, 130)
+        self.table.setColumnWidth(7, 160)
+        self.table.setColumnWidth(8, 125)
+        self.table.setColumnWidth(9, 110)
         header.setMinimumSectionSize(42)
         header.setDefaultAlignment(Qt.AlignCenter)
 
@@ -316,7 +319,7 @@ class FlightListPage(QWidget):
 
         for row, flight in enumerate(rows, start):
             # Items underneath cell widgets keep the selection background continuous.
-            for column in (0, 6, 7, 8):
+            for column in (0, 6, 7, 8, 9):
                 self.table.setItem(row, column, QTableWidgetItem())
             checkbox = FlightSelectionButton()
             checkbox.setProperty('fid', flight.id)
@@ -386,16 +389,60 @@ class FlightListPage(QWidget):
                 event_layout.addWidget(none)
             self.table.setCellWidget(row, 6, event_cell)
 
+            preventive_cell = QWidget()
+            preventive_cell.setObjectName('flightPreventiveCell')
+            preventive_layout = QHBoxLayout(preventive_cell)
+            preventive_layout.setContentsMargins(5, 5, 5, 5)
+            preventive_layout.setAlignment(Qt.AlignCenter)
+            status_text, badge_name, explanation = {
+                'critical': (
+                    'Limit finding', 'flightPmCritical',
+                    'A preventive-maintenance upper limit or permitted '
+                    'transient duration was exceeded.',
+                ),
+                'review': (
+                    'Transient review', 'flightPmReview',
+                    'A continuous upper limit was exceeded; review the '
+                    'recorded transient in Preventive Maintenance.',
+                ),
+                'normal': (
+                    'No finding', 'flightPmNormal',
+                    'No upper-limit departures were identified in the '
+                    'recorded engine samples.',
+                ),
+                'unavailable': (
+                    'No PM data', 'flightPmUnavailable',
+                    'No supported engine-limit measurements are available '
+                    'for preventive-maintenance assessment.',
+                ),
+                'not_applicable': (
+                    'Not applicable', 'flightPmUnavailable',
+                    'AW119MKII limits are not applied to this aircraft model.',
+                ),
+            }.get(
+                flight.preventive_status,
+                ('Unavailable', 'flightPmUnavailable',
+                 'Preventive-maintenance assessment is unavailable.'),
+            )
+            preventive_badge = QLabel(status_text)
+            preventive_badge.setObjectName(badge_name)
+            preventive_badge.setAlignment(Qt.AlignCenter)
+            preventive_badge.setToolTip(explanation)
+            preventive_badge.setMinimumWidth(132)
+            preventive_badge.setFixedHeight(27)
+            preventive_layout.addWidget(preventive_badge)
+            self.table.setCellWidget(row, 7, preventive_cell)
+
             files_cell = QWidget()
             files_cell.setObjectName('flightCell')
             files_layout = QHBoxLayout(files_cell)
-            files_layout.setContentsMargins(6, 6, 6, 6)
+            files_layout.setContentsMargins(4, 6, 4, 6)
             files_layout.addWidget(
                 self._files_button(flight.imported_files),
                 0,
                 Qt.AlignCenter,
             )
-            self.table.setCellWidget(row, 7, files_cell)
+            self.table.setCellWidget(row, 8, files_cell)
 
             actions = QWidget()
             actions.setObjectName('tableActions')
@@ -414,7 +461,7 @@ class FlightListPage(QWidget):
             action_layout.addStretch()
             action_layout.addWidget(open_button)
             action_layout.addStretch()
-            self.table.setCellWidget(row, 8, actions)
+            self.table.setCellWidget(row, 9, actions)
 
         if finish:
             self.selection_header.set_check_enabled(bool(rows))
@@ -469,7 +516,7 @@ class FlightListPage(QWidget):
             action | QItemSelectionModel.Rows,
         )
 
-        for column in (0, 6, 7, 8):
+        for column in (0, 6, 7, 8, 9):
             widget = self.table.cellWidget(row, column)
             if widget is None:
                 continue

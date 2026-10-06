@@ -117,8 +117,6 @@ class MainWindow(QMainWindow):
 
     def setup_menu_bar(self):
         self.file_menu = self.menuBar().addMenu('File')
-        self.settings_action = self.file_menu.addAction('Settings')
-        self.file_menu.addSeparator()
         import_action = self.file_menu.addAction('Import Database')
         import_action.triggered.connect(self.import_database)
         export_action = self.file_menu.addAction('Export Database')

@@ -108,7 +108,7 @@ def _elapsed_seconds(rows):
     return elapsed
 
 
-def _aw119_family(model):
+def aw119_limits_apply(model):
     normalized = re.sub(r'[^a-z0-9]', '', str(model or '').casefold())
     return any(name in normalized for name in ('aw119', 'a119', 'koala'))
 
@@ -210,7 +210,7 @@ def _assess_parameter(spec, rows, window, elapsed):
 
 def assess_preventive_maintenance(flight, aircraft_model):
     """Screen AW119 upper limits across the whole imported engine recording."""
-    if not _aw119_family(aircraft_model):
+    if not aw119_limits_apply(aircraft_model):
         return MaintenanceAssessment(
             False,
             'The AW119MKII limits are not applied to '

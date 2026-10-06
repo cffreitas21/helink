@@ -3,12 +3,13 @@ import tempfile
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QHBoxLayout, QLabel, QMessageBox,
-    QProgressDialog, QPushButton, QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+    QApplication, QFrame, QHBoxLayout, QLabel, QMessageBox,
+    QProgressDialog, QPushButton, QTabWidget, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from helink.ui.dialogs import PdfPreviewDialog
 from helink.services.flight_route_service import nearest_route_point_index
+from helink.services.maintenance_report_builder import technical_report_html
 from helink.ui.tabs import (
     AlertsTab, MapTab, OverviewTab, PreventiveMaintenanceTab, TelemetryTab,
 )
@@ -25,7 +26,8 @@ class FlightDetailsPage(QWidget):
         self._prepared = None
         self.tasks = None
         self._loaded_tabs = set()
-        h=QHBoxLayout(); b=QPushButton('← Flight List'); b.setObjectName('secondary'); b.clicked.connect(self.back_requested); h.addWidget(b); self.title=QLabel(); self.title.setObjectName('title'); h.addWidget(self.title); h.addStretch(); ex=QPushButton('Export Report'); ex.clicked.connect(self.export_report); h.addWidget(ex); root.addLayout(h)
+        self._route_follows_telemetry = False
+        h=QHBoxLayout(); b=QPushButton('← Flight List'); b.setObjectName('secondary'); b.clicked.connect(self.back_requested); h.addWidget(b); self.title=QLabel(); self.title.setObjectName('title'); h.addWidget(self.title); h.addStretch(); root.addLayout(h)
         self.info = QLabel()
         self.info.setObjectName('muted')
         root.addWidget(self.info)
@@ -33,6 +35,7 @@ class FlightDetailsPage(QWidget):
         self.overview=OverviewTab(); self.overview.import_requested.connect(lambda t:self.import_requested.emit(self.fid,t)); self.overview.event_requested.connect(self.open_event_summary); self.tabs.addTab(self.overview,'Overview')
         self.telemetry=TelemetryTab(); self.tabs.addTab(self.telemetry,'Telemetry')
         self.telemetry.route_requested.connect(self.open_route_at_telemetry)
+        self.telemetry.slider.valueChanged.connect(self._telemetry_position_changed)
         self.overview.parameter_requested.connect(self.open_parameter_chart)
         self.preventive=PreventiveMaintenanceTab()
         self.tabs.addTab(self.preventive, 'Preventive Maintenance')
@@ -41,7 +44,39 @@ class FlightDetailsPage(QWidget):
         self.exceed=AlertsTab('EXCEEDANCE'); self.tabs.addTab(self.exceed,'Exceedances')
         self.route=MapTab(); self.tabs.addTab(self.route,'Flight Route')
         self.overview.route_requested.connect(self.open_full_route)
-        self.report_tab=QWidget(); rl=QVBoxLayout(self.report_tab); self.report=QTextEdit(); self.report.setReadOnly(True); gen=QPushButton('Generate Maintenance Report'); gen.clicked.connect(self.make_report); rl.addWidget(gen); rl.addWidget(self.report); self.tabs.addTab(self.report_tab,'Maintenance Report')
+        self.report_tab = QWidget()
+        report_layout = QVBoxLayout(self.report_tab)
+        report_layout.setContentsMargins(14, 14, 14, 14)
+        report_layout.setSpacing(12)
+        report_toolbar = QFrame()
+        report_toolbar.setObjectName('flightReportToolbar')
+        toolbar_layout = QHBoxLayout(report_toolbar)
+        toolbar_layout.setContentsMargins(16, 13, 16, 13)
+        toolbar_layout.setSpacing(16)
+        introduction = QVBoxLayout()
+        introduction.setSpacing(3)
+        report_title = QLabel('Flight Report')
+        report_title.setObjectName('flightReportTitle')
+        report_hint = QLabel(
+            'Review the report below. Open the PDF preview to save a copy.'
+        )
+        report_hint.setObjectName('flightReportHint')
+        report_hint.setWordWrap(True)
+        introduction.addWidget(report_title)
+        introduction.addWidget(report_hint)
+        toolbar_layout.addLayout(introduction, 1)
+        preview_button = QPushButton('Preview PDF')
+        preview_button.setObjectName('flightReportPreview')
+        preview_button.setToolTip('Open a PDF preview with the option to save it')
+        preview_button.clicked.connect(self.make_report)
+        toolbar_layout.addWidget(preview_button, 0, Qt.AlignVCenter)
+        self.report = QTextBrowser()
+        self.report.setObjectName('flightReportDocument')
+        self.report.setReadOnly(True)
+        self.report.setOpenExternalLinks(False)
+        report_layout.addWidget(report_toolbar)
+        report_layout.addWidget(self.report, 1)
+        self.tabs.addTab(self.report_tab, 'Flight Report')
         self.tabs.currentChanged.connect(self._load_selected_tab)
 
     def load(self, fid, prepared=None):
@@ -61,6 +96,7 @@ class FlightDetailsPage(QWidget):
         self._aircraft = aircraft
         # Rendering can be reused only while the database snapshot is unchanged.
         self._loaded_tabs.clear()
+        self._route_follows_telemetry = False
         registration=aircraft.registration if aircraft else f.aircraft_id
         departure = f.departure_time or '\N{EM DASH}'
         arrival = f.arrival_time or '\N{EM DASH}'
@@ -86,7 +122,10 @@ class FlightDetailsPage(QWidget):
                 self._loaded_tabs.discard(tab)
 
     def _load_selected_tab(self, index):
-        self._ensure_tab_loaded(self.tabs.widget(index))
+        tab = self.tabs.widget(index)
+        self._ensure_tab_loaded(tab)
+        if tab is self.route and self._route_follows_telemetry:
+            self._focus_route_at_selected_telemetry()
 
     def _ensure_tab_loaded(self, tab):
         if self._flight is None or tab is None or tab in self._loaded_tabs:
@@ -94,10 +133,7 @@ class FlightDetailsPage(QWidget):
         if tab in (self.cas, self.exceed):
             tab.tasks = self.tasks
         if tab is self.report_tab:
-            self._set_report_text(
-                self._flight.predictive_report
-                or 'No maintenance report has been generated for this flight yet.'
-            )
+            self._render_report()
         elif tab is self.overview and self._prepared is not None:
             tab.load(
                 self._flight, statistics=self._prepared.statistics,
@@ -109,10 +145,9 @@ class FlightDetailsPage(QWidget):
             tab.load(self._flight)
         self._loaded_tabs.add(tab)
 
-    def _set_report_text(self, text):
-        self.report.setPlainText(text)
-        # Export can update the report before its tab has ever been opened.
-        # Do not replace that new text with the opening snapshot afterwards.
+    def _render_report(self):
+        self.report.setHtml(technical_report_html(self._flight, self._aircraft))
+        # PDF generation can update this before the tab has been opened.
         self._loaded_tabs.add(self.report_tab)
 
     def open_parameter_chart(self, parameter_key):
@@ -137,9 +172,23 @@ class FlightDetailsPage(QWidget):
             return
         self._ensure_tab_loaded(self.route)
         self.tabs.setCurrentWidget(self.route)
+        self._route_follows_telemetry = True
         self.route.focus_point(point_index)
 
+    def _telemetry_position_changed(self, _index):
+        if self._route_follows_telemetry and self.tabs.currentWidget() is self.route:
+            self._focus_route_at_selected_telemetry()
+
+    def _focus_route_at_selected_telemetry(self):
+        if self._flight is None or not self.telemetry.data:
+            return
+        sample = self.telemetry.data[self.telemetry.slider.value()]
+        point_index = nearest_route_point_index(self._flight, sample)
+        if point_index is not None:
+            self.route.focus_point(point_index)
+
     def open_full_route(self):
+        self._route_follows_telemetry = False
         self._ensure_tab_loaded(self.route)
         self.tabs.setCurrentWidget(self.route)
         self.route.show_full_route()
@@ -163,17 +212,19 @@ class FlightDetailsPage(QWidget):
     @staticmethod
     def _report_filename(flight):
         session = (flight.departure_time or flight.id[:8]).replace(':', '')
-        return f'HELINK_Maintenance_Report_{flight.flight_date}_{session}.pdf'
+        return f'HELINK_Flight_Report_{flight.flight_date}_{session}.pdf'
 
     def make_report(self):
+        if self.fid is None:
+            return
         if self.tasks is not None:
             handle = tempfile.NamedTemporaryFile(
                 prefix='helink_report_', suffix='.pdf', delete=False,
             )
             path = Path(handle.name)
             handle.close()
-            return self._export_background(path, preview=True)
-        flight = self.flight_controller.get(self.fid)
+            return self._preview_background(path)
+        flight = self._flight
         suggested = self._report_filename(flight)
         temporary_path = None
         QApplication.setOverrideCursor(Qt.WaitCursor)
@@ -184,91 +235,66 @@ class FlightDetailsPage(QWidget):
             temporary_path = Path(handle.name)
             handle.close()
             self.report_controller.export_pdf(self.fid, temporary_path)
-            self._set_report_text(
-                self.flight_controller.get(self.fid).predictive_report
-            )
+            self._render_report()
         except Exception as error:
             QMessageBox.critical(self, 'Report error', str(error))
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
             return
         finally:
             QApplication.restoreOverrideCursor()
 
-        preview = PdfPreviewDialog(temporary_path, suggested, self)
+        preview = None
         try:
+            preview = PdfPreviewDialog(temporary_path, suggested, self)
             preview.exec()
+        except Exception as error:
+            QMessageBox.critical(self, 'Report preview error', str(error))
         finally:
-            preview.release()
+            if preview is not None:
+                preview.release()
             try:
                 temporary_path.unlink(missing_ok=True)
             except OSError:
                 pass
 
-    def export_report(self):
-        flight = self._flight if self.tasks is not None else self.flight_controller.get(self.fid)
-        suggested = self._report_filename(flight)
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            'Export Maintenance Report',
-            suggested,
-            'PDF Document (*.pdf)',
-        )
-        if not path:
-            return
-        if self.tasks is not None:
-            return self._export_background(path)
-        QApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            destination = self.report_controller.export_pdf(self.fid, path)
-            self._set_report_text(
-                self.flight_controller.get(self.fid).predictive_report
-            )
-            QMessageBox.information(
-                self,
-                'Export complete',
-                f'PDF report exported successfully to:\n{destination}',
-            )
-        except Exception as error:
-            QMessageBox.critical(self, 'Export error', str(error))
-        finally:
-            QApplication.restoreOverrideCursor()
-
-    def _export_background(self, destination, *, preview=False):
+    def _preview_background(self, destination):
         flight_id = self.fid
         suggested = self._report_filename(self._flight)
-        progress = QProgressDialog('Preparing maintenance report...', '', 0, 0, self)
+        progress = QProgressDialog('Preparing flight report PDF...', '', 0, 0, self)
         progress.setCancelButton(None)
-        progress.setWindowTitle('Maintenance Report')
+        progress.setWindowTitle('Flight Report')
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
         progress.setAutoClose(False)
         progress.show()
 
         def cleanup():
-            if preview:
-                try:
-                    Path(destination).unlink(missing_ok=True)
-                except OSError:
-                    pass
+            try:
+                Path(destination).unlink(missing_ok=True)
+            except OSError:
+                pass
 
         def received(result):
             progress.close()
-            path, text = result
-            if getattr(self.window(), '_closing', False):
+            path, _text = result
+            if getattr(self.window(), '_closing', False) or self.fid != flight_id:
                 cleanup()
                 return
-            if self.fid == flight_id:
-                self._set_report_text(text)
-            if preview:
+            self._render_report()
+            dialog = None
+            try:
                 dialog = PdfPreviewDialog(path, suggested, self)
-                try:
-                    dialog.exec()
-                finally:
+                dialog.exec()
+            except Exception as error:
+                QMessageBox.critical(self, 'Report preview error', str(error))
+            finally:
+                if dialog is not None:
                     dialog.release()
-                    cleanup()
-            else:
-                QMessageBox.information(
-                    self, 'Export complete', f'PDF report exported successfully to:\n{path}',
-                )
+                cleanup()
 
         def failed(error):
             progress.close()

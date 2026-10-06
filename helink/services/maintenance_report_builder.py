@@ -1,294 +1,422 @@
+"""Flight-specific maintenance report content and printable presentation."""
+
 from __future__ import annotations
 
+from datetime import datetime
 from html import escape
-from statistics import mean
 
-from helink.services.airport_formatter import format_airport
+from helink.models.aircraft import Aircraft
 from helink.models.flight import AlertTrigger, Flight
-
-
-FILE_TYPES = (
-    '1_Engine_Data_Recording',
-    'data_log',
-    '2_Exceedance_Log',
-    '3_Exceedance_Log_CONT',
-    '4_VNE_Dynamic',
-    '0_CAS_Default',
-    '5_CAS',
-    '6_Logbook',
-    'Garmin Alerts',
+from helink.services.airport_formatter import format_airport
+from helink.services.flight_overview_summary import flight_parameter_statistics
+from helink.services.flight_route_service import flight_route_availability
+from helink.services.preventive_maintenance_service import (
+    assess_preventive_maintenance,
 )
 
 
-def _values(items, attribute):
-    return [
-        float(value)
-        for item in items
-        if (value := getattr(item, attribute)) is not None
-    ]
+PARAMETERS = (
+    ('n1', 'N1', '%'), ('n2', 'N2', '%'), ('nr', 'NR', '%'),
+    ('itt', 'ITT', '°C'), ('eng_ot', 'ENG OIL TEMP', '°C'),
+    ('eng_op', 'ENG OIL PRESS', 'psi'),
+    ('xmsn_ot', 'XMSN OIL TEMP', '°C'),
+    ('xmsn_op', 'XMSN OIL PRESS', 'psi'),
+    ('fuel_press', 'FUEL PRESS', 'psi'), ('tq', 'TORQUE', '%'),
+    ('oat', 'OAT', '°C'), ('ias', 'IAS', 'kt'),
+    ('alt_ind', 'ALTITUDE', 'ft'),
+)
 
 
-def _stat(values, unit, decimals=1):
-    if not values:
-        return 'NO DATA', 'NO DATA'
-    return (
-        f'{mean(values):.{decimals}f} {unit}',
-        f'{max(values):.{decimals}f} {unit}',
+def _plain(value):
+    return str(value) if value not in (None, '') else 'N/A'
+
+
+def _html(value):
+    return escape(_plain(value))
+
+
+def _number(value, decimals=1):
+    return '—' if value is None else f'{value:,.{decimals}f}'
+
+
+def _measurement(value, unit, decimals=1):
+    return '—' if value is None else f'{_number(value, decimals)} {unit}'
+
+
+def _triggers(alert):
+    valid = tuple(
+        item for item in alert.triggers
+        if str(item.value or '').strip().upper() != 'UNK'
     )
-
-
-def _alert_triggers(alert):
-    if alert.triggers:
-        return alert.triggers
-    if alert.trigger_name:
+    if valid:
+        return valid
+    legacy = str(alert.trigger_value or '').strip()
+    if alert.trigger_name and legacy.upper() != 'UNK':
         return (
             AlertTrigger(
-                alert.trigger_name,
-                alert.trigger_value or '',
-                alert.trigger_units or '',
-                alert.trigger_state or '',
+                alert.trigger_name, legacy,
+                alert.trigger_units or '', alert.trigger_state or '',
             ),
         )
     return ()
 
 
-def technical_report(flight: Flight) -> str:
-    engine = flight.engine_data
-    gps = flight.data_log
-    alerts = flight.alerts
-    exceedances = [alert for alert in alerts if alert.kind == 'EXCEEDANCE']
+def _report_data(flight, aircraft):
+    recording = flight.engine_data or flight.data_log
+    return {
+        'statistics': flight_parameter_statistics(flight),
+        'assessment': assess_preventive_maintenance(
+            flight, aircraft.model if aircraft else '',
+        ),
+        'exceedances': tuple(
+            alert for alert in flight.alerts
+            if (alert.kind or '').strip().upper() == 'EXCEEDANCE'
+        ),
+        'miscmp': tuple(
+            alert for alert in flight.alerts
+            if (alert.kind or '').strip().upper() == 'CAS'
+            and (alert.alert_name or '').strip().upper() == 'MISCMP-P'
+            and (alert.alert_state or '').strip().upper() == 'SET'
+        ),
+        'route': flight_route_availability(flight),
+        'first': recording[0].timestamp if recording else None,
+        'last': recording[-1].timestamp if recording else None,
+    }
 
-    parameters = (
-        ('ITT', *_stat(_values(engine, 'itt'), 'deg C')),
-        ('Torque', *_stat(_values(engine, 'tq'), '%')),
-        ('ENG Oil Temperature', *_stat(_values(engine, 'eng_ot'), 'deg C')),
-        ('XMSN Oil Temperature', *_stat(_values(engine, 'xmsn_ot'), 'deg C')),
-        ('Altitude', *_stat(_values(gps, 'alt_ind'), 'ft', 0)),
-        ('IAS', *_stat(_values(gps, 'ias'), 'kt')),
-    )
 
-    first_time = (
-        engine[0].timestamp if engine
-        else (gps[0].timestamp if gps else None)
-    )
-    last_time = (
-        engine[-1].timestamp if engine
-        else (gps[-1].timestamp if gps else None)
-    )
-    valid_gps = [
-        point for point in gps
-        if point.latitude is not None and point.longitude is not None
-        and 35 <= point.latitude <= 45 and -11 <= point.longitude <= 5
-    ]
+def _status(parameter):
+    return {
+        'normal': 'No upper-limit finding',
+        'advisory': f'Transient review ({parameter.findings})',
+        'critical': f'Limit finding ({parameter.findings})',
+        'unavailable': 'No data',
+    }[parameter.severity]
 
-    warning_count = sum(alert.level == 'WARNING' for alert in alerts)
-    caution_count = sum(alert.level == 'CAUTION' for alert in alerts)
 
-    lines = [
-        'HELINK',
-        'HELICOPTER ANALYSIS AND PREVENTIVE MAINTENANCE SYSTEM',
-        '',
-        'MAINTENANCE REPORT',
-        '=' * 72,
-        '',
-        'FLIGHT OVERVIEW',
-        '-' * 72,
-        f'Flight date:       {flight.flight_date or "N/A"}',
-        f'Departure:         {flight.departure_time or "N/A"}',
-        f'Arrival:           {flight.arrival_time or "N/A"}',
-        f'Duration:          {flight.duration or "N/A"}',
-        f'Origin:            {format_airport(flight.origin) if flight.origin else "N/A"}',
-        f'Destination:       {format_airport(flight.destination) if flight.destination else "N/A"}',
-        '',
-        'KEY FLIGHT PARAMETERS',
-        '-' * 72,
-        f'{"Parameter":<30} {"AVG":>18} {"MAXIMUM":>18}',
-    ]
-    for label, average, maximum in parameters:
-        lines.append(f'{label:<30} {average:>18} {maximum:>18}')
-
-    lines += [
-        '',
-        'DATA COVERAGE',
-        '-' * 72,
-        f'Engine samples:    {len(engine):,}',
-        f'GPS points:        {len(gps):,}',
-        f'Recording window:  {first_time or "N/A"} to {last_time or "N/A"}',
-        '',
-        'FLIGHT EVENTS',
-        '-' * 72,
-        f'Total events:      {len(alerts)}',
-        f'Exceedances:       {len(exceedances)}',
-        f'Warnings:          {warning_count}',
-        f'Cautions:          {caution_count}',
-        '',
-        'ROUTE SUMMARY',
-        '-' * 72,
-        f'Valid route points: {len(valid_gps):,}',
-    ]
-    if valid_gps:
-        start, end = valid_gps[0], valid_gps[-1]
-        lines += [
-            f'Start position:    {start.latitude:.5f}, {start.longitude:.5f}',
-            f'End position:      {end.latitude:.5f}, {end.longitude:.5f}',
-        ]
-    else:
-        lines.append('Route:             No valid GPS route is available.')
-
-    imported = set(flight.imported_files)
-    lines += ['', 'IMPORTED FILES', '-' * 72]
-    for file_type in FILE_TYPES:
-        lines.append(
-            f'[{"LOADED" if file_type in imported else "MISSING":7}] {file_type}'
+def _trigger_text(alert):
+    parts = []
+    for trigger in _triggers(alert):
+        measurement = ' '.join(
+            part for part in (_plain(trigger.value), trigger.units) if part
         )
+        state = f' [{trigger.state}]' if trigger.state else ''
+        parts.append(f'{_plain(trigger.name)}: {measurement}{state}')
+    return '; '.join(parts) or 'No trigger details recorded'
 
-    lines += ['', 'EXCEEDANCES', '=' * 72]
-    if not exceedances:
-        lines.append('No exceedances were recorded for this flight.')
-    for index, alert in enumerate(exceedances, 1):
-        lines += [
-            '',
-            f'Exceedance {index}',
-            f'  Timestamp:    {alert.timestamp or "N/A"}',
-            f'  State:        {alert.alert_state or "N/A"}',
-            f'  Level:        {alert.level or "N/A"}',
-            f'  Alert:        {alert.alert_name or "N/A"}',
-            f'  Description:  {alert.description or "N/A"}',
-            '  Triggers:',
-        ]
-        triggers = _alert_triggers(alert)
-        if not triggers:
-            lines.append('    - No trigger details available')
-        for trigger in triggers:
-            measurement = ' '.join(
-                value for value in (trigger.value, trigger.units) if value
-            ) or 'N/A'
-            lines.append(
-                f'    - {trigger.name or "Unnamed trigger"}: '
-                f'{measurement} | State: {trigger.state or "N/A"}'
-            )
 
-    lines += [
+def technical_report(flight: Flight, aircraft: Aircraft | None = None) -> str:
+    """Plain-text copy retained in the database for existing workflows."""
+    data = _report_data(flight, aircraft)
+    assessment = data['assessment']
+    lines = [
+        'HELINK | FLIGHT REPORT',
+        f'Flight ID: {flight.id}', '',
+        'AIRCRAFT IDENTIFICATION',
+        f'Tail Number: {_plain(aircraft.registration if aircraft else None)}',
+        f'Model: {_plain(aircraft.model if aircraft else None)}',
+        f'Serial number: {_plain(aircraft.serial_number if aircraft else None)}',
         '',
-        'MAINTENANCE NOTE',
-        '=' * 72,
-        'Confirm all trends and exceedances against the approved maintenance '
-        'manual, operating limitations, and aircraft history. This report '
-        'supports technical assessment and does not replace certified '
-        'maintenance documentation.',
+        '01  FLIGHT SUMMARY',
+        f'Flight date: {_plain(flight.flight_date)}',
+        f'Departure: {_plain(flight.departure_time)}',
+        f'Arrival: {_plain(flight.arrival_time)}',
+        f'Duration: {_plain(flight.duration)}',
+        f'Origin: {format_airport(flight.origin) if flight.origin else "N/A"}',
+        f'Destination: {format_airport(flight.destination) if flight.destination else "N/A"}',
+        f'Route: {"Available" if data["route"].available else "Unavailable"}',
+        '',
+        '02  FLIGHT PARAMETERS',
+        f'{"Parameter":<20} {"AVG":>18} {"MAX":>18}',
+    ]
+    for key, label, unit in PARAMETERS:
+        stat = data['statistics'][key]
+        digits = 0 if key == 'alt_ind' else 1
+        lines.append(
+            f'{label:<20} '
+            f'{_measurement(stat.average, unit, digits):>18} '
+            f'{_measurement(stat.maximum, unit, digits):>18}'
+        )
+    lines += ['', '03  PREVENTIVE MAINTENANCE']
+    if assessment.applicable:
+        if not assessment.assessed_samples:
+            lines.append(assessment.message)
+        for item in assessment.parameters:
+            spec = item.spec
+            transient = (
+                f'{spec.transient_max:g} {spec.unit} / {spec.transient_seconds} s'
+                if spec.transient_max is not None else 'N/A'
+            )
+            observed = (
+                f'{item.observed_max:g} {spec.unit}'
+                if item.observed_max is not None else 'No data'
+            )
+            lines.append(
+                f'{spec.label}: continuous max {spec.continuous_max:g} '
+                f'{spec.unit}; transient {transient}; recorded max '
+                f'{observed}; {_status(item)}'
+            )
+        lines.append('Recorded limit observations:')
+        if not assessment.events:
+            lines.append('  None identified in the assessed samples.')
+        for event in assessment.events:
+            spec = next(
+                item.spec for item in assessment.parameters
+                if item.spec.key == event.parameter
+            )
+            duration = (
+                f'{event.duration_seconds} s'
+                if event.duration_seconds is not None else 'unknown'
+            )
+            lines.append(
+                f'  {_plain(event.timestamp)} | {spec.label} | '
+                f'{event.finding} | {event.observed:g} {spec.unit} | '
+                f'{duration} | {event.limit}'
+            )
+    else:
+        lines.append(assessment.message)
+    lines += [
+        '', '04  RECORDED EVENTS',
+        f'Exceedance records: {len(data["exceedances"])}',
+    ]
+    if not data['exceedances']:
+        lines.append('  No exceedance records available.')
+    for alert in data['exceedances']:
+        lines.append(
+            f'  {_plain(alert.timestamp)} | {_plain(alert.alert_state)} | '
+            f'{_plain(alert.level)} | {_plain(alert.alert_name)}'
+        )
+        lines.append(f'    Triggers / values: {_trigger_text(alert)}')
+    lines.append(f'MISCMP-P activations: {len(data["miscmp"])}')
+    for alert in data['miscmp']:
+        lines.append(
+            f'  {_plain(alert.timestamp)} | {_plain(alert.level)} | '
+            f'{_trigger_text(alert)}'
+        )
+    lines += [
+        '', 'TECHNICAL NOTE',
+        'This report is an analysis aid, not a release-to-service decision. '
+        'Confirm findings against approved documentation, operating context '
+        'and aircraft history. Missing measurements are not zero.',
     ]
     return '\n'.join(lines)
 
 
-def technical_report_html(flight: Flight) -> str:
-    report = escape(technical_report(flight))
+def _table_cell(value, fixed):
+    opening = (
+        '<td class="fixed" bgcolor="#e9eef3">' if fixed
+        else '<td bgcolor="#ffffff">'
+    )
+    return f'{opening}{_html(value)}</td>'
+
+
+def _table(headers, rows, widths=None, *, fixed_columns=()):
+    heading = ''.join(
+        f'<th width="{widths[index] if widths else ""}">{_html(label)}</th>'
+        for index, label in enumerate(headers)
+    )
+    body = ''.join(
+        '<tr>' + ''.join(
+            _table_cell(value, index in fixed_columns)
+            for index, value in enumerate(row)
+        ) + '</tr>'
+        for row in rows
+    )
+    return (
+        '<table class="data" width="100%" cellspacing="0" cellpadding="5">'
+        f'<tr>{heading}</tr>{body}</table>'
+    )
+
+
+def _facts(items):
+    rows = [
+        (items[index][0], items[index][1],
+         items[index + 1][0] if index + 1 < len(items) else '',
+         items[index + 1][1] if index + 1 < len(items) else '')
+        for index in range(0, len(items), 2)
+    ]
+    return _table(
+        ('FIELD', 'VALUE', 'FIELD', 'VALUE'), rows,
+        ('18%', '32%', '18%', '32%'), fixed_columns=(0, 2),
+    )
+
+
+def _section(number, title, content, *, new_page=False):
+    break_before = '<p style="page-break-before: always;"></p>' if new_page else ''
+    return break_before + f'<h2>{number:02d} &nbsp; {_html(title)}</h2>{content}'
+
+
+def _event_table(alerts):
+    if not alerts:
+        return '<p class="empty">No records available for this flight.</p>'
+    return _table(
+        ('TIME', 'STATE', 'LEVEL', 'EVENT', 'TRIGGERS / VALUES'),
+        [
+            (_plain(item.timestamp), _plain(item.alert_state),
+             _plain(item.level), _plain(item.alert_name), _trigger_text(item))
+            for item in alerts
+        ],
+        ('17%', '10%', '11%', '20%', '42%'),
+    )
+
+
+def technical_report_html(
+    flight: Flight, aircraft: Aircraft | None = None,
+    *, generated_at: datetime | None = None,
+) -> str:
+    """Manual-inspired, application-branded HTML for preview and A4 PDF."""
+    data = _report_data(flight, aircraft)
+    assessment = data['assessment']
+    generated = (generated_at or datetime.now().astimezone()).strftime(
+        '%Y-%m-%d %H:%M'
+    )
+    identity = _facts((
+        ('Registration', aircraft.registration if aircraft else 'N/A'),
+        ('Model', aircraft.model if aircraft else 'N/A'),
+        ('Serial number', aircraft.serial_number if aircraft else 'N/A'),
+        ('Flight reference', flight.id),
+    ))
+    summary = _facts((
+        ('Flight date', flight.flight_date), ('Duration', flight.duration),
+        ('Departure', flight.departure_time), ('Arrival', flight.arrival_time),
+        ('Origin', format_airport(flight.origin) if flight.origin else 'N/A'),
+        ('Destination',
+         format_airport(flight.destination) if flight.destination else 'N/A'),
+        ('Route', 'Available' if data['route'].available else 'Unavailable'),
+        ('Recorded period',
+         f'{_plain(data["first"])} to {_plain(data["last"])}'),
+    ))
+    parameter_rows = []
+    for key, label, unit in PARAMETERS:
+        stat = data['statistics'][key]
+        digits = 0 if key == 'alt_ind' else 1
+        parameter_rows.append((
+            label,
+            _measurement(stat.average, unit, digits),
+            _measurement(stat.maximum, unit, digits),
+        ))
+    parameters = _table(
+        ('PARAMETER', 'AVG', 'MAX'),
+        parameter_rows, ('46%', '27%', '27%'),
+        fixed_columns=(0,),
+    )
+    if assessment.applicable:
+        preventive_rows = []
+        for item in assessment.parameters:
+            spec = item.spec
+            transient = (
+                f'{spec.transient_max:g} {spec.unit} / {spec.transient_seconds} s'
+                if spec.transient_max is not None else '—'
+            )
+            observed = (
+                f'{item.observed_max:g} {spec.unit}'
+                if item.observed_max is not None else '—'
+            )
+            preventive_rows.append((
+                spec.label, f'{spec.continuous_max:g} {spec.unit}',
+                transient, observed, _status(item),
+            ))
+        preventive = (
+            (
+                f'<p class="notice">{_html(assessment.message)}</p>'
+                if not assessment.assessed_samples else ''
+            )
+            + _table(
+                ('PARAMETER', 'CONTINUOUS MAX', 'TRANSIENT LIMIT',
+                 'RECORDED MAX', 'ASSESSMENT'),
+                preventive_rows, ('17%', '20%', '22%', '18%', '23%'),
+                fixed_columns=(0, 1, 2),
+            )
+        )
+        if assessment.events:
+            events = []
+            for event in assessment.events:
+                spec = next(
+                    item.spec for item in assessment.parameters
+                    if item.spec.key == event.parameter
+                )
+                events.append((
+                    _plain(event.timestamp), spec.label, event.finding,
+                    f'{event.observed:g} {spec.unit}',
+                    f'{event.duration_seconds} s'
+                    if event.duration_seconds is not None else 'Unknown',
+                    event.limit,
+                ))
+            preventive += '<h3>Recorded limit observations</h3>' + _table(
+                ('TIME', 'PARAMETER', 'FINDING', 'OBSERVED', 'DURATION', 'LIMIT'),
+                events, ('15%', '13%', '22%', '13%', '11%', '26%'),
+            )
+        else:
+            if not assessment.assessed_samples:
+                message = 'No engine samples are available for assessment.'
+            elif not any(item.samples for item in assessment.parameters):
+                message = 'No supported upper-limit parameters were recorded.'
+            else:
+                message = (
+                    'No upper-limit departures were identified in the '
+                    'assessed samples.'
+                )
+            preventive += f'<p class="empty">{_html(message)}</p>'
+    else:
+        preventive = (
+            f'<p class="notice">{_html(assessment.message)}</p>'
+            '<p>No AW119 limit assessment has been made for this aircraft.</p>'
+        )
+    exceedance_count = len(data['exceedances'])
+    recorded_events = (
+        f'<h3>Exceedances — {exceedance_count} '
+        f'{"record" if exceedance_count == 1 else "records"}</h3>'
+        + _event_table(data['exceedances'])
+        + f'<h3>MISCMP-P — {len(data["miscmp"])} activations</h3>'
+        + _event_table(data['miscmp'])
+    )
+    sections = ''.join((
+        _section(1, 'Flight Summary', summary),
+        _section(2, 'Flight Parameters', parameters),
+        _section(3, 'Preventive Maintenance', preventive, new_page=True),
+        _section(4, 'Recorded Events', recorded_events),
+    ))
     return f'''<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
+<html><head><meta charset="utf-8"><style>
 @page {{ size: A4; margin: 14mm; }}
-body {{
-    font-family: "Segoe UI", Arial, sans-serif;
-    color: #172033;
-    background: #ffffff;
-    font-size: 9.5pt;
-}}
-.header {{
-    background: #0b1830;
-    color: #ffffff;
-    padding: 24px 26px;
-    border-radius: 8px;
-}}
-.brand {{
-    font-size: 27pt;
-    font-weight: 800;
-    letter-spacing: 1.5px;
-}}
-.subtitle {{
-    color: #c5d5e8;
-    font-size: 9pt;
-    margin-top: 2px;
-}}
-.title {{
-    font-size: 17pt;
-    font-weight: 700;
-    margin-top: 17px;
-}}
-.meta {{
-    width: 100%;
-    margin: 14px 0;
-    border-collapse: separate;
-    border-spacing: 7px;
-}}
-.meta td {{
-    background: #f0f4f8;
-    border: 1px solid #cbd7e4;
-    border-radius: 6px;
-    padding: 9px 12px;
-}}
-.meta-label {{
-    color: #64748b;
-    font-size: 7pt;
-    font-weight: 700;
-    text-transform: uppercase;
-}}
-.meta-value {{
-    color: #0d213d;
-    font-size: 11pt;
-    font-weight: 700;
-    margin-top: 3px;
-}}
-.report {{
-    background: #ffffff;
-    border: 1px solid #c7d3e1;
-    border-top: 4px solid #2d6eb5;
-    border-radius: 6px;
-    padding: 17px 19px;
-}}
-pre {{
-    font-family: "Consolas", "Courier New", monospace;
-    font-size: 8.2pt;
-    line-height: 1.48;
-    white-space: pre-wrap;
-    color: #26364a;
-    margin: 0;
-}}
-.note {{
-    background: #edf4fb;
-    border-left: 4px solid #2d6eb5;
-    color: #405269;
-    padding: 10px 12px;
-    margin-top: 13px;
-    font-size: 8pt;
-}}
-.footer {{
-    border-top: 1px solid #ccd7e4;
-    color: #718096;
-    text-align: center;
-    margin-top: 16px;
-    padding-top: 7px;
-    font-size: 8pt;
-}}
-</style>
-</head>
-<body>
-<div class="header">
-  <div class="brand">HELINK</div>
-  <div class="subtitle">Helicopter Analysis and Preventive Maintenance System</div>
-  <div class="title">Preventive Maintenance Report</div>
-</div>
-<table class="meta"><tr>
-  <td><div class="meta-label">Flight Date</div><div class="meta-value">{escape(flight.flight_date or "N/A")}</div></td>
-  <td><div class="meta-label">Departure</div><div class="meta-value">{escape(flight.departure_time or "N/A")}</div></td>
-  <td><div class="meta-label">Arrival</div><div class="meta-value">{escape(flight.arrival_time or "N/A")}</div></td>
-  <td><div class="meta-label">Duration</div><div class="meta-value">{escape(flight.duration or "N/A")}</div></td>
-</tr><tr>
-  <td colspan="2"><div class="meta-label">Origin</div><div class="meta-value">{escape(format_airport(flight.origin) if flight.origin else "N/A")}</div></td>
-  <td colspan="2"><div class="meta-label">Destination</div><div class="meta-value">{escape(format_airport(flight.destination) if flight.destination else "N/A")}</div></td>
-</tr></table>
-<div class="report"><pre>{report}</pre></div>
-<div class="note"><b>Important:</b> This report supports technical assessment and does not replace approved or certified maintenance documentation.</div>
-<div class="footer">HELINK &middot; 2026 &middot; v1.0</div>
-</body>
-</html>'''
+body {{ font-family: Arial, "Segoe UI", sans-serif; color: #20242a;
+        background: white; font-size: 9pt; }}
+h1 {{ font-size: 18pt; margin: 12px 0 3px; text-align: center; }}
+h2 {{ font-size: 11pt; margin: 18px 0 8px; padding-bottom: 5px;
+      border-bottom: 2px solid #162b44; }}
+h3 {{ font-size: 9pt; margin: 12px 0 5px; }}
+p {{ margin: 5px 0 8px; }}
+table {{ border-collapse: collapse; }}
+table.data th {{ font-size: 7.7pt; font-weight: bold; text-align: left;
+                 background: #e9eef3; border: 1px solid #b8c2cd;
+                 padding: 6px; }}
+table.data td {{ border: 1px solid #c8d0d9; padding: 5px 6px;
+                 vertical-align: top; background: #ffffff; }}
+table.data td.fixed {{ background: #e9eef3; color: #23364a; }}
+.masthead td {{ border: 0; padding: 0 0 5px; font-size: 9pt; }}
+.rule {{ border-bottom: 3px solid #162b44; margin: 2px 0 11px; }}
+.subtitle {{ text-align: center; color: #56616d; font-size: 8.5pt; }}
+.identity {{ margin-top: 13px; }}
+.intro {{ color: #4b5563; }}
+.empty {{ color: #546273; font-style: italic; padding: 7px 0; }}
+.notice {{ border: 1px solid #a77e28; background: #fff7e8; padding: 8px; }}
+.note {{ border-top: 1px solid #7b8793; margin-top: 17px; padding-top: 8px;
+         font-size: 8pt; }}
+.footer {{ border-top: 1px solid #7b8793; margin-top: 18px; padding-top: 5px;
+           font-size: 7.5pt; color: #4b5563; }}
+</style></head><body>
+<table class="masthead" width="100%"><tr>
+<td width="54%"><span style="font-size:15pt;font-weight:bold;">HELINK</span><br>
+<span style="font-size:10pt;">Helicopter Analysis and Preventive Maintenance System</span></td>
+<td width="46%" align="right"><span style="font-size:15pt;font-weight:bold;">FLIGHT REPORT</span><br>
+Generated {_html(generated)}</td></tr></table>
+<div class="rule"></div>
+<h1>FLIGHT REPORT</h1>
+<div class="identity">{identity}</div>
+{sections}
+<div class="note"><b>TECHNICAL NOTE:</b> This report is an analysis aid, not an
+approved maintenance record or a release-to-service decision. Confirm findings
+against applicable approved documentation, operating context and aircraft
+history. </div>
+<div class="footer">HELINK &nbsp;|&nbsp; Report Flight ID {_html(flight.id)}
+&nbsp;|&nbsp; Generated {_html(generated)}</div>
+</body></html>'''

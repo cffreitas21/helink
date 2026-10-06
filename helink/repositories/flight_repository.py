@@ -5,7 +5,7 @@ import re
 import uuid
 from collections.abc import Callable, Iterable
 
-from helink.models.flight import Flight
+from helink.models.flight import EngineData, Flight
 
 
 WriteProgress = Callable[[int, int, str], None]
@@ -15,6 +15,7 @@ class FlightRepository:
     """Persists flights and telemetry using atomic batch operations."""
 
     BATCH_SIZE = 5_000
+    LIMIT_COLUMNS = frozenset({'n1', 'n2', 'nr', 'itt', 'eng_ot', 'tq'})
 
     def __init__(self, database):
         self.database = database
@@ -98,6 +99,51 @@ class FlightRepository:
             'SELECT 1 FROM engine_data WHERE flight_id=? LIMIT 1',
             (flight_id,),
         ).fetchone() is not None
+
+    def has_limit_parameter_data(self, flight_id):
+        return self.connection.execute(
+            """SELECT 1 FROM engine_data WHERE flight_id=?
+               AND (n1 IS NOT NULL OR n2 IS NOT NULL OR nr IS NOT NULL
+                    OR itt IS NOT NULL OR eng_ot IS NOT NULL OR tq IS NOT NULL)
+               LIMIT 1""",
+            (flight_id,),
+        ).fetchone() is not None
+
+    def find_engine_limit_candidates(self, flight_ids, limits):
+        """Find flights with a recorded value above a continuous upper limit.
+
+        The database filters normal flights in one pass. Only candidates need
+        their complete recording loaded for transient-duration assessment.
+        """
+        flight_ids = tuple(dict.fromkeys(flight_ids))
+        limits = tuple(limits)
+        if not flight_ids or not limits:
+            return set()
+        if any(spec.key not in self.LIMIT_COLUMNS for spec in limits):
+            raise ValueError('Unsupported preventive-maintenance parameter.')
+        conditions = ' OR '.join(f'e.{spec.key} > ?' for spec in limits)
+        thresholds = [spec.continuous_max for spec in limits]
+        candidates = set()
+        for start in range(0, len(flight_ids), 500):
+            batch = flight_ids[start:start + 500]
+            placeholders = ','.join('?' for _ in batch)
+            rows = self.connection.execute(
+                f'SELECT DISTINCT e.flight_id FROM engine_data e '
+                f'WHERE e.flight_id IN ({placeholders}) '
+                f'AND ({conditions})',
+                (*batch, *thresholds),
+            )
+            candidates.update(row['flight_id'] for row in rows)
+        return candidates
+
+    def find_engine_limit_rows(self, flight_id):
+        """Load only the channels needed for a candidate's limit assessment."""
+        rows = self.connection.execute(
+            """SELECT id, flight_id, seq, timestamp, n1, n2, nr, itt, eng_ot, tq
+               FROM engine_data WHERE flight_id=? ORDER BY seq""",
+            (flight_id,),
+        )
+        return tuple(EngineData.from_record(dict(row)) for row in rows)
 
     def has_engine_data_for_aircraft_date(self, aircraft_id, flight_date):
         return self.connection.execute(
