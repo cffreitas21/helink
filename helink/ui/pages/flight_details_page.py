@@ -9,7 +9,9 @@ from PySide6.QtWidgets import (
 
 from helink.ui.dialogs import PdfPreviewDialog
 from helink.services.flight_route_service import nearest_route_point_index
-from helink.ui.tabs import AlertsTab, MapTab, OverviewTab, TelemetryTab
+from helink.ui.tabs import (
+    AlertsTab, MapTab, OverviewTab, PreventiveMaintenanceTab, TelemetryTab,
+)
 
 
 class FlightDetailsPage(QWidget):
@@ -19,6 +21,7 @@ class FlightDetailsPage(QWidget):
     def __init__(self, aircraft_controller, flight_controller, report_controller):
         super().__init__(); self.aircraft_controller=aircraft_controller; self.flight_controller=flight_controller; self.report_controller=report_controller; self.fid=None; root=QVBoxLayout(self); root.setContentsMargins(20,16,20,20)
         self._flight = None
+        self._aircraft = None
         self._prepared = None
         self.tasks = None
         self._loaded_tabs = set()
@@ -31,6 +34,9 @@ class FlightDetailsPage(QWidget):
         self.telemetry=TelemetryTab(); self.tabs.addTab(self.telemetry,'Telemetry')
         self.telemetry.route_requested.connect(self.open_route_at_telemetry)
         self.overview.parameter_requested.connect(self.open_parameter_chart)
+        self.preventive=PreventiveMaintenanceTab()
+        self.tabs.addTab(self.preventive, 'Preventive Maintenance')
+        self.preventive.point_requested.connect(self.open_preventive_point)
         self.cas=AlertsTab('CAS'); self.tabs.addTab(self.cas,'CAS')
         self.exceed=AlertsTab('EXCEEDANCE'); self.tabs.addTab(self.exceed,'Exceedances')
         self.route=MapTab(); self.tabs.addTab(self.route,'Flight Route')
@@ -52,6 +58,7 @@ class FlightDetailsPage(QWidget):
             f, aircraft = prepared.flight, prepared.aircraft
         self.fid = fid
         self._flight = f
+        self._aircraft = aircraft
         # Rendering can be reused only while the database snapshot is unchanged.
         self._loaded_tabs.clear()
         registration=aircraft.registration if aircraft else f.aircraft_id
@@ -96,6 +103,8 @@ class FlightDetailsPage(QWidget):
                 self._flight, statistics=self._prepared.statistics,
                 events=self._prepared.events, route=self._prepared.route,
             )
+        elif tab is self.preventive:
+            tab.load(self._flight, self._aircraft)
         else:
             tab.load(self._flight)
         self._loaded_tabs.add(tab)
@@ -110,6 +119,11 @@ class FlightDetailsPage(QWidget):
         self._ensure_tab_loaded(self.telemetry)
         if self.telemetry.focus_parameter(parameter_key):
             self.tabs.setCurrentWidget(self.telemetry)
+
+    def open_preventive_point(self, sample_index):
+        self._ensure_tab_loaded(self.telemetry)
+        self.telemetry.slider.setValue(sample_index)
+        self.tabs.setCurrentWidget(self.telemetry)
 
     def open_route_at_telemetry(self, sample):
         if self._flight is None:

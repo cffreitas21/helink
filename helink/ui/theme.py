@@ -182,6 +182,20 @@ QWidget#telemetryEmptyState{background:transparent}
 QLabel#telemetryEmptyTitle{color:#334155;font-size:16px;font-weight:750}
 QLabel#telemetryEmptyHint{color:#64748b;font-size:12px}
 
+QLabel#preventiveTitle{color:#0f172a;font-size:16px;font-weight:800}
+QLabel#preventiveScope{color:#334155;font-size:12px;font-weight:650}
+QLabel#preventiveScopeWarning{color:#991b1b;font-size:12px;font-weight:750}
+QLabel#preventiveDetail{color:#475569;font-size:11px}
+QLabel#preventiveObserved{color:#172033;font-size:12px;font-weight:700}
+QLabel#preventiveNormal,QLabel#preventiveAdvisory,QLabel#preventiveCritical,QLabel#preventiveUnavailable{border-radius:6px;padding:5px 8px;font-size:11px;font-weight:800}
+QLabel#preventiveNormal{background:#dcfce7;color:#166534}
+QLabel#preventiveAdvisory{background:#fef3c7;color:#92400e}
+QLabel#preventiveCritical{background:#fee2e2;color:#991b1b}
+QLabel#preventiveUnavailable{background:#e2e8f0;color:#475569}
+QTableWidget#preventiveTable{background:#ffffff;alternate-background-color:#f8fafc;border:1px solid #cbd5e1;border-radius:7px;selection-background-color:#dbeafe;selection-color:#172033}
+QTableWidget#preventiveTable::item{padding:5px 8px;border-bottom:1px solid #e2e8f0}
+QTableWidget#preventiveTable QHeaderView::section{background:#e8eef6;color:#25344a;border:none;border-right:1px solid #d3dce8;border-bottom:1px solid #aebed2;padding:8px;font-size:11px;font-weight:750}
+
 QLabel#selectionCount{background:transparent;color:#64748b;padding:5px 8px;font-size:11px;font-weight:650}
 QLabel#selectionCount[active="true"]{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd;border-radius:10px;font-weight:750}
 QWidget#selectionCell,QWidget#flightCell,QWidget#flightEventCell,QWidget#tableActions{background:transparent;border:none;border-right:1px solid #d3dce8}
