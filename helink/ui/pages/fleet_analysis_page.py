@@ -21,6 +21,7 @@ from helink.ui.widgets.flight_duration_filter_button import FlightDurationFilter
 
 
 PARAMETERS = TELEMETRY_PARAMETERS + OVERVIEW_TELEMETRY_PARAMETERS
+
 AIRCRAFT_COLORS = (
     '#2563eb', '#c2410c', '#15803d', '#9333ea', '#be123c',
     '#0891b2', '#a16207', '#475569', '#4f46e5', '#0f766e',
