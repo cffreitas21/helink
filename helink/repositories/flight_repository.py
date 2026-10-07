@@ -109,32 +109,47 @@ class FlightRepository:
             (flight_id,),
         ).fetchone() is not None
 
-    def find_engine_limit_candidates(self, flight_ids, limits):
-        """Find flights with a recorded value above a continuous upper limit.
-
-        The database filters normal flights in one pass. Only candidates need
-        their complete recording loaded for transient-duration assessment.
-        """
+    def find_engine_limit_exceedances(self, flight_ids, limits):
+        """Read only samples above a continuous upper limit for list screening."""
         flight_ids = tuple(dict.fromkeys(flight_ids))
         limits = tuple(limits)
         if not flight_ids or not limits:
-            return set()
+            return ()
         if any(spec.key not in self.LIMIT_COLUMNS for spec in limits):
             raise ValueError('Unsupported preventive-maintenance parameter.')
         conditions = ' OR '.join(f'e.{spec.key} > ?' for spec in limits)
         thresholds = [spec.continuous_max for spec in limits]
-        candidates = set()
+        rows = []
+        for start in range(0, len(flight_ids), 500):
+            batch = flight_ids[start:start + 500]
+            placeholders = ','.join('?' for _ in batch)
+            matches = self.connection.execute(
+                'SELECT e.flight_id, e.seq, e.timestamp, '
+                'e.n1, e.n2, e.nr, e.itt, e.eng_ot, e.tq '
+                'FROM engine_data e '
+                f'WHERE e.flight_id IN ({placeholders}) '
+                f'AND ({conditions}) ORDER BY e.flight_id, e.seq',
+                (*batch, *thresholds),
+            )
+            rows.extend(matches)
+        return rows
+
+    def find_irregular_engine_sequences(self, flight_ids):
+        """Identify recordings whose sequence numbers cannot index sparse rows."""
+        flight_ids = tuple(dict.fromkeys(flight_ids))
+        irregular = set()
         for start in range(0, len(flight_ids), 500):
             batch = flight_ids[start:start + 500]
             placeholders = ','.join('?' for _ in batch)
             rows = self.connection.execute(
-                f'SELECT DISTINCT e.flight_id FROM engine_data e '
-                f'WHERE e.flight_id IN ({placeholders}) '
-                f'AND ({conditions})',
-                (*batch, *thresholds),
+                'SELECT flight_id FROM engine_data '
+                f'WHERE flight_id IN ({placeholders}) GROUP BY flight_id '
+                'HAVING MIN(seq)<>0 OR MAX(seq)<>COUNT(*)-1 '
+                'OR COUNT(DISTINCT seq)<>COUNT(*)',
+                batch,
             )
-            candidates.update(row['flight_id'] for row in rows)
-        return candidates
+            irregular.update(row['flight_id'] for row in rows)
+        return irregular
 
     def find_engine_limit_rows(self, flight_id):
         """Load only the channels needed for a candidate's limit assessment."""

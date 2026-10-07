@@ -283,23 +283,26 @@ class FlightListPage(QWidget):
         self._render_pending = True
         self.row_checkboxes.clear()
         self.table.clearContents()
-        self.table.setRowCount(len(rows))
+        self.table.setRowCount(0)
         self.selection_header.set_check_enabled(False)
+        self._sync_selection_ui()
 
         def batch(start=0):
             if token != self._render_token:
                 return
             end = min(len(rows), start + 24)
-            self.loading_changed.emit(
-                True, f'Preparing flight list ({end} of {len(rows)})...',
-            )
             self.table.setUpdatesEnabled(False)
             try:
+                self.table.setRowCount(end)
                 self._populate_rows(
                     rows[start:end], start=start, reset=False, finish=False,
                 )
             finally:
                 self.table.setUpdatesEnabled(True)
+            if start == 0:
+                # The first visible rows are ready; finish the rest without
+                # covering the usable list with a full-page loading overlay.
+                self.loading_changed.emit(False, '')
             if end < len(rows):
                 QTimer.singleShot(0, lambda: batch(end))
             else:
@@ -307,7 +310,6 @@ class FlightListPage(QWidget):
                 self._rendered_rows = rows
                 self.selection_header.set_check_enabled(bool(rows))
                 self._sync_selection_ui()
-                self.loading_changed.emit(False, '')
 
         QTimer.singleShot(0, batch)
 

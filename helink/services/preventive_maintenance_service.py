@@ -208,6 +208,49 @@ def _assess_parameter(spec, rows, window, elapsed):
     ), events
 
 
+def screen_upper_limit_rows(rows):
+    """Screen sparse over-limit samples for the flight-list indicator.
+
+    A long transient is only a candidate here: the complete recording must
+    confirm its duration before the list calls it a critical finding. This
+    keeps the detailed assessment authoritative without loading every sample
+    for every flight in the list.
+    """
+    statuses = {}
+    runs = {}
+    for row in rows:
+        flight_id = row['flight_id']
+        clock = _clock_seconds(row['timestamp'])
+        for spec in LIMITS:
+            value = _number(row[spec.key])
+            if value is None or value <= spec.continuous_max:
+                continue
+            if spec.transient_max is None or value > spec.transient_max:
+                statuses[flight_id] = 'critical'
+                continue
+            if statuses.get(flight_id) == 'critical':
+                continue
+            statuses.setdefault(flight_id, 'review')
+            if statuses[flight_id] == 'verify_duration':
+                continue
+
+            seq = row['seq']
+            if not isinstance(seq, int):
+                statuses[flight_id] = 'verify_duration'
+                continue
+            key = (flight_id, spec.key)
+            previous = runs.get(key)
+            duration = 0
+            if previous is not None and clock is not None and previous[1] is not None:
+                delta = (clock - previous[1]) % (24 * 3600)
+                if seq == previous[0] + 1 and delta <= MAX_CONTIGUOUS_GAP_SECONDS:
+                    duration = previous[2] + delta
+            runs[key] = (seq, clock, duration)
+            if duration > spec.transient_seconds:
+                statuses[flight_id] = 'verify_duration'
+    return statuses
+
+
 def assess_preventive_maintenance(flight, aircraft_model):
     """Screen AW119 upper limits across the whole imported engine recording."""
     if not aw119_limits_apply(aircraft_model):

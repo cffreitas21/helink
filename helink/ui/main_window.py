@@ -133,9 +133,27 @@ class MainWindow(QMainWindow):
 
     def display_dashboard(self):
         if self.tasks is not None:
+            def show_aircraft(aircraft):
+                self.dashboard.refresh((aircraft, {}))
+                token = self._navigation_token
+
+                def received(summaries):
+                    if token == self._navigation_token and not self._closing:
+                        self.dashboard.update_summaries(summaries)
+
+                def failed(error):
+                    if token == self._navigation_token and not self._closing:
+                        self.statusBar().showMessage(
+                            f'Fleet statistics could not be loaded: {error}', 8000,
+                        )
+
+                self._navigation_task = self.aircraft_controller.request(
+                    'fleet_summaries', on_result=received, on_error=failed,
+                )
+
             return self._request_page(
-                self.dashboard, self.aircraft_controller, 'dashboard_data', (),
-                self.dashboard.refresh, 'Loading fleet...',
+                self.dashboard, self.aircraft_controller, 'list_aircraft', (),
+                show_aircraft, 'Loading fleet...',
             )
         self.dashboard.refresh()
         self.stack.setCurrentWidget(self.dashboard)
