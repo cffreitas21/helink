@@ -44,25 +44,11 @@ class DatabaseManager:
         mappings={'aircraft':{'prefixo':'registration','modelo':'model','msn':'serial_number'},'flights':{'aeronave_id':'aircraft_id','data_voo':'flight_date','hora_partida':'departure_time','hora_chegada':'arrival_time','duracao':'duration','origem':'origin','destino':'destination','ficheiros_importados':'imported_files'}}
         tables={row[0] for row in self.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         with self.connection:
-            if 'flight_source_files' in tables:
-                self.connection.execute('DROP TABLE flight_source_files')
             for table,columns in mappings.items():
                 if table not in tables:continue
                 existing={row[1] for row in self.connection.execute(f'PRAGMA table_info("{table}")')}
                 for old,new in columns.items():
                     if old in existing and new not in existing:self.connection.execute(f'ALTER TABLE "{table}" RENAME COLUMN "{old}" TO "{new}"');existing.remove(old);existing.add(new)
-            if 'aircraft' in tables:
-                aircraft_columns = {
-                    row[1] for row in self.connection.execute(
-                        'PRAGMA table_info("aircraft")'
-                    )
-                }
-                for obsolete_column in ('flight_hours', 'horas_voo'):
-                    if obsolete_column in aircraft_columns:
-                        self.connection.execute(
-                            f'ALTER TABLE aircraft DROP COLUMN "{obsolete_column}"'
-                        )
-                        aircraft_columns.remove(obsolete_column)
         if 'flights' in tables:
             flight_columns = {
                 row[1] for row in self.connection.execute(

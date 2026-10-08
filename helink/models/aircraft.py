@@ -12,8 +12,6 @@ class Aircraft:
     model: str
     serial_number: str
     created_at: str | None = None
-    last_flight: str = 'None'
-    active_alerts: int = 0
     flight_count: int = 0
 
     @classmethod
@@ -24,7 +22,5 @@ class Aircraft:
             model=str(record['model']),
             serial_number=str(record['serial_number']),
             created_at=record.get('created_at'),
-            last_flight=str(record.get('last_flight') or 'None'),
-            active_alerts=int(record.get('active_alerts') or 0),
             flight_count=int(record.get('flight_count') or 0),
         )

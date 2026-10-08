@@ -24,8 +24,5 @@ class ReportController:
             on_result, on_error,
         )
 
-    def generate(self, flight_id):
-        return self.service.generate(flight_id)
-
     def export_pdf(self, flight_id, destination):
         return self.service.export_pdf(flight_id, destination)

@@ -290,30 +290,6 @@ def _duration_between(departure_time, arrival_time):
     return f'{hours}h {remaining}m' if remaining else f'{hours}h'
 
 
-def _duration(rows: list[dict]):
-    if len(rows) < 2:
-        return None
-
-    def seconds(row):
-        value = _get(row, 'Timestamp', 'Lcl Time', 'LclTime', 'Time')
-        match = re.search(r'(\d{1,2}):(\d{2})(?::(\d{2}))?', str(value))
-        if not match:
-            return None
-        return int(match[1]) * 3600 + int(match[2]) * 60 + int(match[3] or 0)
-
-    start, end = seconds(rows[0]), seconds(rows[-1])
-    if start is None or end is None:
-        return None
-    difference = end - start
-    if difference < 0:
-        difference += 86400
-    minutes = max(1, round(difference / 60))
-    if minutes < 60:
-        return f'{minutes} min'
-    hours, remaining = divmod(minutes, 60)
-    return f'{hours}h {remaining}m' if remaining else f'{hours}h'
-
-
 SESSION_MARGIN = timedelta(minutes=20)
 
 

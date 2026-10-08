@@ -1,4 +1,3 @@
-import uuid
 from sys import float_info
 
 from helink.models.aircraft import Aircraft
@@ -73,7 +72,7 @@ class AircraftRepository:
     def connection(self):return self.database.connection
 
     def find_all(self):
-        sql="""SELECT a.*,COALESCE((SELECT flight_date FROM flights f WHERE f.aircraft_id=a.id ORDER BY flight_date DESC LIMIT 1),'None') last_flight,COALESCE((SELECT COUNT(*) FROM alerts al JOIN flights f ON f.id=al.flight_id WHERE f.aircraft_id=a.id AND al.level='WARNING' AND al.trigger_state='ACTIVE'),0) active_alerts,(SELECT COUNT(*) FROM flights f WHERE f.aircraft_id=a.id) flight_count FROM aircraft a ORDER BY registration"""
+        sql="""SELECT a.*,(SELECT COUNT(*) FROM flights f WHERE f.aircraft_id=a.id) flight_count FROM aircraft a ORDER BY registration"""
         return [Aircraft.from_record(dict(row)) for row in self.connection.execute(sql)]
 
 

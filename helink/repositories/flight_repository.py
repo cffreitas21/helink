@@ -24,20 +24,6 @@ class FlightRepository:
     def connection(self):
         return self.database.connection
 
-    def find_all(self, aircraft_id=None):
-        query = 'SELECT * FROM flights'
-        params = []
-        if aircraft_id:
-            query += ' WHERE aircraft_id=?'
-            params = [aircraft_id]
-        query += ' ORDER BY flight_date DESC, departure_time DESC'
-        result = []
-        for row in self.connection.execute(query, params):
-            record = dict(row)
-            record['imported_files'] = json.loads(record['imported_files'])
-            result.append(Flight.from_record(record))
-        return result
-
     def find_summaries(
         self, aircraft_id=None, *, start_date=None, end_date=None, descending=True,
     ):
@@ -160,13 +146,6 @@ class FlightRepository:
         )
         return tuple(EngineData.from_record(dict(row)) for row in rows)
 
-    def has_engine_data_for_aircraft_date(self, aircraft_id, flight_date):
-        return self.connection.execute(
-            'SELECT 1 FROM flights f JOIN engine_data e ON e.flight_id=f.id '
-            'WHERE f.aircraft_id=? AND f.flight_date=? LIMIT 1',
-            (aircraft_id, flight_date),
-        ).fetchone() is not None
-
     def list_import_sessions(self, aircraft_id):
         """Return existing flight windows, including standalone CSV records."""
         rows = self.connection.execute(
@@ -227,9 +206,6 @@ class FlightRepository:
             )
             record['alerts'].append(alert)
         return Flight.from_record(record)
-
-    def save(self, flight):
-        return self.save_many([flight])[0]
 
     def save_many(
         self,

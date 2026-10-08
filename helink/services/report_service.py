@@ -21,12 +21,6 @@ class ReportService:
             raise ValueError('The selected flight is no longer available.')
         return flight, self.aircraft.find_by_id(flight.aircraft_id)
 
-    def generate(self, flight_id):
-        flight, aircraft = self._records(flight_id)
-        report = flight_report_text(flight, aircraft)
-        self.flights.save_report(flight_id, report)
-        return report
-
     def export_pdf(self, flight_id, destination):
         destination = Path(destination)
         if destination.suffix.lower() != '.pdf':

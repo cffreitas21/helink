@@ -95,9 +95,6 @@ class EventsTab(QWidget):
         self._render_pending = False
         return was_pending
 
-    def _schedule_row_resize(self, *_):
-        QTimer.singleShot(0, self._fit_table_to_contents)
-
     def _fit_table_to_contents(self):
         self.table.resizeColumnsToContents()
         header = self.table.horizontalHeader()
