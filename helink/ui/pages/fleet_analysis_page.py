@@ -39,7 +39,6 @@ class FleetAnalysisPage(QWidget):
     """Single-aircraft trends and like-for-like fleet parameter comparisons."""
 
     back_requested = Signal()
-    flights_requested = Signal(str)
     loading_changed = Signal(bool, str)
 
     def __init__(self, aircraft_controller):
@@ -79,9 +78,6 @@ class FleetAnalysisPage(QWidget):
         self.title.setObjectName('title')
         heading.addWidget(self.title)
         heading.addStretch()
-        self.view_flights = QPushButton('View Flights')
-        self.view_flights.clicked.connect(self._open_flights)
-        heading.addWidget(self.view_flights)
         root.addLayout(heading)
         self.context = QLabel()
         self.context.setObjectName('muted')
@@ -326,7 +322,6 @@ class FleetAnalysisPage(QWidget):
                 f' \N{MIDDLE DOT} minimum {self.minimum_minutes.value()} min'
             )
         self.coverage.setText(coverage)
-        self.view_flights.setVisible(self._allow_comparison and len(selected) == 1)
         if not self._allow_comparison:
             if len(selected) == 1:
                 item = selected[0]
@@ -433,8 +428,3 @@ class FleetAnalysisPage(QWidget):
         row = self._row_by_aircraft.get(day.aircraft_id)
         if row is not None:
             self.comparison.selectRow(row)
-
-    def _open_flights(self):
-        selected = self._selected_aircraft_ids()
-        if len(selected) == 1:
-            self.flights_requested.emit(selected[0])

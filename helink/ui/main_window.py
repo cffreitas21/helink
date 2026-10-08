@@ -95,9 +95,6 @@ class MainWindow(QMainWindow):
         self.fleet_analysis.back_requested.connect(
             self.navigation_controller.back_from_analysis
         )
-        self.fleet_analysis.flights_requested.connect(
-            self.navigation_controller.show_aircraft
-        )
         self.fleet.add_requested.connect(self.add_aircraft)
         self.flight_list.back_requested.connect(
             self.navigation_controller.show_fleet
@@ -133,27 +130,9 @@ class MainWindow(QMainWindow):
 
     def display_fleet(self):
         if self.tasks is not None:
-            def show_aircraft(aircraft):
-                self.fleet.refresh((aircraft, {}))
-                token = self._navigation_token
-
-                def received(summaries):
-                    if token == self._navigation_token and not self._closing:
-                        self.fleet.update_summaries(summaries)
-
-                def failed(error):
-                    if token == self._navigation_token and not self._closing:
-                        self.statusBar().showMessage(
-                            f'Fleet statistics could not be loaded: {error}', 8000,
-                        )
-
-                self._navigation_task = self.aircraft_controller.request(
-                    'fleet_summaries', on_result=received, on_error=failed,
-                )
-
             return self._request_page(
-                self.fleet, self.aircraft_controller, 'list_aircraft', (),
-                show_aircraft, 'Loading fleet...',
+                self.fleet, self.aircraft_controller, 'fleet_data', (),
+                self.fleet.refresh, 'Loading fleet...',
             )
         self.fleet.refresh()
         self.stack.setCurrentWidget(self.fleet)

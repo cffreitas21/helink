@@ -6,7 +6,7 @@ from pathlib import Path
 
 SCHEMA="""
 PRAGMA foreign_keys=ON;
-CREATE TABLE IF NOT EXISTS aircraft(id TEXT PRIMARY KEY,registration TEXT UNIQUE NOT NULL,model TEXT NOT NULL,serial_number TEXT NOT NULL,flight_hours REAL NOT NULL DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS aircraft(id TEXT PRIMARY KEY,registration TEXT UNIQUE NOT NULL,model TEXT NOT NULL,serial_number TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS flights(id TEXT PRIMARY KEY,aircraft_id TEXT NOT NULL REFERENCES aircraft(id) ON DELETE CASCADE,flight_date TEXT NOT NULL,departure_time TEXT,arrival_time TEXT,duration TEXT,origin TEXT,destination TEXT,imported_files TEXT NOT NULL DEFAULT '[]',predictive_report TEXT NOT NULL DEFAULT '',created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS engine_data(id INTEGER PRIMARY KEY AUTOINCREMENT,flight_id TEXT NOT NULL REFERENCES flights(id) ON DELETE CASCADE,seq INTEGER,timestamp TEXT,oat REAL,n1 REAL,n2 REAL,itt REAL,nr REAL,tq REAL,eng_ot REAL,fuel_press REAL,eng_op REAL,xmsn_op REAL,xmsn_ot REAL);
 CREATE TABLE IF NOT EXISTS gps_data(id INTEGER PRIMARY KEY AUTOINCREMENT,flight_id TEXT NOT NULL REFERENCES flights(id) ON DELETE CASCADE,seq INTEGER,timestamp TEXT,latitude REAL,longitude REAL,alt_ind REAL,ias REAL,pitch REAL,roll REAL,heading REAL);
@@ -41,14 +41,28 @@ class DatabaseManager:
         self.connection.execute('PRAGMA cache_size=-32768')
 
     def _migrate(self):
-        mappings={'aircraft':{'prefixo':'registration','modelo':'model','msn':'serial_number','horas_voo':'flight_hours'},'flights':{'aeronave_id':'aircraft_id','data_voo':'flight_date','hora_partida':'departure_time','hora_chegada':'arrival_time','duracao':'duration','origem':'origin','destino':'destination','ficheiros_importados':'imported_files'}}
+        mappings={'aircraft':{'prefixo':'registration','modelo':'model','msn':'serial_number'},'flights':{'aeronave_id':'aircraft_id','data_voo':'flight_date','hora_partida':'departure_time','hora_chegada':'arrival_time','duracao':'duration','origem':'origin','destino':'destination','ficheiros_importados':'imported_files'}}
         tables={row[0] for row in self.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         with self.connection:
+            if 'flight_source_files' in tables:
+                self.connection.execute('DROP TABLE flight_source_files')
             for table,columns in mappings.items():
                 if table not in tables:continue
                 existing={row[1] for row in self.connection.execute(f'PRAGMA table_info("{table}")')}
                 for old,new in columns.items():
                     if old in existing and new not in existing:self.connection.execute(f'ALTER TABLE "{table}" RENAME COLUMN "{old}" TO "{new}"');existing.remove(old);existing.add(new)
+            if 'aircraft' in tables:
+                aircraft_columns = {
+                    row[1] for row in self.connection.execute(
+                        'PRAGMA table_info("aircraft")'
+                    )
+                }
+                for obsolete_column in ('flight_hours', 'horas_voo'):
+                    if obsolete_column in aircraft_columns:
+                        self.connection.execute(
+                            f'ALTER TABLE aircraft DROP COLUMN "{obsolete_column}"'
+                        )
+                        aircraft_columns.remove(obsolete_column)
         if 'flights' in tables:
             flight_columns = {
                 row[1] for row in self.connection.execute(

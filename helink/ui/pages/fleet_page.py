@@ -107,15 +107,6 @@ class FleetPage(QWidget):
         self._summaries = summaries
         self._render_list()
 
-    def update_summaries(self, summaries):
-        """Fill in fleet statistics after the aircraft list is already visible."""
-        if summaries == self._summaries:
-            return
-        scroll_position = self.scroll.verticalScrollBar().value()
-        self._summaries = summaries
-        self._render_list(reset_scroll=False)
-        self.scroll.verticalScrollBar().setValue(scroll_position)
-
     def _sort_field_changed(self, *_):
         numeric = self.sort_by.currentData() != 'registration'
         blocked = self.sort_order.blockSignals(True)
@@ -152,7 +143,7 @@ class FleetPage(QWidget):
             + sorted(missing, key=identity)
         )
 
-    def _render_list(self, *_, reset_scroll=True):
+    def _render_list(self, *_):
         self._clear_list()
 
         if not self._aircraft:
@@ -163,8 +154,7 @@ class FleetPage(QWidget):
                     self._aircraft_card(item, self._summaries.get(item.id, {}))
                 )
         self.list.addStretch()
-        if reset_scroll:
-            self.scroll.verticalScrollBar().setValue(0)
+        self.scroll.verticalScrollBar().setValue(0)
 
     def _clear_list(self):
         while self.list.count():

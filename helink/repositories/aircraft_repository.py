@@ -206,7 +206,7 @@ class AircraftRepository:
 
     def add(self,registration,model,serial_number):
         aircraft_id=registration.lower().replace(' ','-')
-        with self.connection:self.connection.execute('INSERT INTO aircraft(id,registration,model,serial_number,flight_hours) VALUES(?,?,?,?,0)',(aircraft_id,registration.strip(),model.strip(),serial_number.strip()))
+        with self.connection:self.connection.execute('INSERT INTO aircraft(id,registration,model,serial_number) VALUES(?,?,?,?)',(aircraft_id,registration.strip(),model.strip(),serial_number.strip()))
         return aircraft_id
 
     def delete(self,aircraft_id):
