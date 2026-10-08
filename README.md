@@ -15,7 +15,7 @@ Carlos Fernando Garcia Freitas - carlosfreitas-21@hotmail.com
 - Synchronized telemetry charts and timeline
 - CAS alert and exceedance analysis
 - Offline flight-route map for Portugal
-- PDF maintenance report generation and preview
+- PDF flight report generation and preview
 - SQLite database import and export
 - Fully offline operation
 
@@ -44,8 +44,9 @@ helink/
 |   |-- controllers/            Application use-case controllers
 |   |-- models/                 Domain entities
 |   |-- repositories/           SQLite persistence operations
-|   |-- services/               Import, reporting, map and database services
+|   |-- services/               Import, analysis, route and report logic
 |   |-- ui/                     Windows, pages, tabs, dialogs and widgets
+|   |   |-- offline_map_server.py  Local server for the offline map assets
 |   |-- assets/images           Helink logo and icon
 |   `-- assets/map              Offline map resources
 ```

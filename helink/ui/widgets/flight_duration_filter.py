@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 
 
-class FlightDurationFilterButton(QComboBox):
+class FlightDurationFilter(QComboBox):
     """A compact minimum-flight-time filter with quick choices and minute input."""
 
     minimum_changed = Signal(int)

@@ -11,7 +11,7 @@ from math import isfinite
 from pathlib import Path
 from typing import Any, Callable
 
-from helink.services.airport_formatter import destination_from_gps
+from helink.services.airport_lookup import destination_from_gps
 
 
 FILE_TYPES = {

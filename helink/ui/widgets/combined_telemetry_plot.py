@@ -4,10 +4,10 @@ from PySide6.QtCore import Qt
 from matplotlib.backend_bases import MouseButton, MouseEvent
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 
-from helink.ui.widgets.plot import Plot
+from helink.ui.widgets.telemetry_plot import TelemetryPlot
 
 
-class CombinedTelemetryPlot(Plot):
+class CombinedTelemetryPlot(TelemetryPlot):
     """Shared timeline with physical scales kept separate by measurement unit."""
 
     def __init__(self):

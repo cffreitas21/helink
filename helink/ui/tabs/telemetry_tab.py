@@ -22,7 +22,7 @@ from helink.services.flight_route_service import flight_route_availability
 from helink.ui.telemetry_parameters import (
     OVERVIEW_TELEMETRY_PARAMETERS, TELEMETRY_PARAMETERS,
 )
-from helink.ui.widgets import Card, ChartFilterButton, CombinedTelemetryPlot, Plot
+from helink.ui.widgets import Card, ChartFilterButton, CombinedTelemetryPlot, TelemetryPlot
 
 
 class TelemetryTab(QWidget):
@@ -236,7 +236,7 @@ class TelemetryTab(QWidget):
     def _create_chart(self, parameter):
         key, title, unit, color = parameter
         card = Card(title, self.chart_grid.parentWidget())
-        plot = Plot(2.35)
+        plot = TelemetryPlot(2.35)
         plot.setMinimumHeight(220)
         plot.series_color = color
         plot.point_selected.connect(self.slider.setValue)
@@ -421,7 +421,7 @@ class TelemetryTab(QWidget):
             )
             values = ['\N{EM DASH}']
             if point:
-                values[0] = Plot._clock_time(point.timestamp)
+                values[0] = TelemetryPlot._clock_time(point.timestamp)
                 for key, _label, _unit in self.INSTRUMENTS:
                     number = (
                         self._parameter_values('ias')[data_index]
@@ -452,7 +452,7 @@ class TelemetryTab(QWidget):
         index = self.slider.value()
         point = self.data[index] if self.data else None
         self.time.setText(
-            Plot._clock_time(point.timestamp if point else None)
+            TelemetryPlot._clock_time(point.timestamp if point else None)
         )
 
         self._update_instrument_window(index)

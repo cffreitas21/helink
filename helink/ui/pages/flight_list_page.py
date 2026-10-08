@@ -15,9 +15,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from helink.services.airport_formatter import format_airport
+from helink.services.airport_lookup import format_airport
 from helink.ui.widgets import (
-    FlightDateFilterButton, FlightSelectionButton, ImportedFilesButton, SelectAllHeader,
+    FlightDateFilter, FlightSelectionButton, ImportedFilesButton, SelectAllHeader,
 )
 
 
@@ -100,7 +100,7 @@ class FlightListPage(QWidget):
             self._sort_order_changed
         )
         toolbar.addWidget(self.sort_order)
-        self.date_filter = FlightDateFilterButton()
+        self.date_filter = FlightDateFilter()
         self.date_filter.range_changed.connect(self._reload_rows)
         toolbar.addWidget(self.date_filter)
         toolbar.addStretch()

@@ -4,7 +4,7 @@ from typing import Protocol
 
 
 class MainView(Protocol):
-    def display_dashboard(self): ...
+    def display_fleet(self): ...
     def display_flight_list(self, aircraft_id): ...
     def display_flight(self, flight_id): ...
     def display_fleet_analysis(self, aircraft_id=None, *, allow_comparison=True): ...
@@ -21,11 +21,11 @@ class NavigationController:
     def attach_view(self, view: MainView):
         self.view = view
 
-    def show_dashboard(self):
+    def show_fleet(self):
         self.current_aircraft = None
         self._analysis_from_flights = False
         if self.view:
-            self.view.display_dashboard()
+            self.view.display_fleet()
 
     def show_aircraft(self, aircraft_id):
         self.current_aircraft = aircraft_id
@@ -55,10 +55,10 @@ class NavigationController:
         if self._analysis_from_flights:
             self.back_to_aircraft()
         else:
-            self.show_dashboard()
+            self.show_fleet()
 
     def back_to_aircraft(self):
         if self.current_aircraft:
             self.show_aircraft(self.current_aircraft)
         else:
-            self.show_dashboard()
+            self.show_fleet()

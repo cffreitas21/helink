@@ -8,7 +8,7 @@ from PySide6.QtWidgets import *
 from helink.ui.dialogs import (
     AboutDialog, AddAircraftDialog, ImportSummaryDialog,
 )
-from helink.ui.pages import DashboardPage, FlightListPage, FlightDetailsPage, FleetAnalysisPage
+from helink.ui.pages import FleetPage, FlightListPage, FlightDetailsPage, FleetAnalysisPage
 from helink.ui.widgets import Sidebar
 from helink.ui.widgets.imported_files_button import FILE_TYPE_LABELS
 from helink.ui.widgets.loading_overlay import LoadingOverlay
@@ -52,8 +52,8 @@ class MainWindow(QMainWindow):
         root.setSpacing(0)
 
         self.sidebar = Sidebar()
-        self.sidebar.dashboard_requested.connect(
-            self.navigation_controller.show_dashboard
+        self.sidebar.fleet_requested.connect(
+            self.navigation_controller.show_fleet
         )
         self.sidebar.import_requested.connect(self.import_global)
         root.addWidget(self.sidebar)
@@ -68,7 +68,7 @@ class MainWindow(QMainWindow):
         self.loading_overlay = LoadingOverlay(self.stack)
         root.addWidget(body, 1)
 
-        self.dashboard = DashboardPage(self.aircraft_controller)
+        self.fleet = FleetPage(self.aircraft_controller)
         self.fleet_analysis = FleetAnalysisPage(self.aircraft_controller)
         self.flight_list = FlightListPage(
             self.aircraft_controller, self.flight_controller
@@ -83,13 +83,13 @@ class MainWindow(QMainWindow):
             page.loading_changed.connect(
                 lambda busy, message, current=page: self._page_loading(current, busy, message)
             )
-        for page in (self.dashboard, self.fleet_analysis, self.flight_list, self.flight_details):
+        for page in (self.fleet, self.fleet_analysis, self.flight_list, self.flight_details):
             self.stack.addWidget(page)
 
-        self.dashboard.aircraft_selected.connect(
+        self.fleet.aircraft_selected.connect(
             self.navigation_controller.show_aircraft
         )
-        self.dashboard.analysis_requested.connect(
+        self.fleet.analysis_requested.connect(
             self.navigation_controller.show_fleet_analysis
         )
         self.fleet_analysis.back_requested.connect(
@@ -98,9 +98,9 @@ class MainWindow(QMainWindow):
         self.fleet_analysis.flights_requested.connect(
             self.navigation_controller.show_aircraft
         )
-        self.dashboard.add_requested.connect(self.add_aircraft)
+        self.fleet.add_requested.connect(self.add_aircraft)
         self.flight_list.back_requested.connect(
-            self.navigation_controller.show_dashboard
+            self.navigation_controller.show_fleet
         )
         self.flight_list.flight_selected.connect(
             self.navigation_controller.show_flight
@@ -113,7 +113,7 @@ class MainWindow(QMainWindow):
             self.navigation_controller.back_to_aircraft
         )
         self.flight_details.import_requested.connect(self.import_for_flight)
-        self.navigation_controller.show_dashboard()
+        self.navigation_controller.show_fleet()
 
     def setup_menu_bar(self):
         self.file_menu = self.menuBar().addMenu('File')
@@ -131,15 +131,15 @@ class MainWindow(QMainWindow):
     def show_about(self):
         AboutDialog(self).exec()
 
-    def display_dashboard(self):
+    def display_fleet(self):
         if self.tasks is not None:
             def show_aircraft(aircraft):
-                self.dashboard.refresh((aircraft, {}))
+                self.fleet.refresh((aircraft, {}))
                 token = self._navigation_token
 
                 def received(summaries):
                     if token == self._navigation_token and not self._closing:
-                        self.dashboard.update_summaries(summaries)
+                        self.fleet.update_summaries(summaries)
 
                 def failed(error):
                     if token == self._navigation_token and not self._closing:
@@ -152,11 +152,11 @@ class MainWindow(QMainWindow):
                 )
 
             return self._request_page(
-                self.dashboard, self.aircraft_controller, 'list_aircraft', (),
+                self.fleet, self.aircraft_controller, 'list_aircraft', (),
                 show_aircraft, 'Loading fleet...',
             )
-        self.dashboard.refresh()
-        self.stack.setCurrentWidget(self.dashboard)
+        self.fleet.refresh()
+        self.stack.setCurrentWidget(self.fleet)
 
     def display_flight_list(self, aircraft_id):
         if self.tasks is not None:
@@ -255,7 +255,7 @@ class MainWindow(QMainWindow):
                 dialog.model.text(),
                 dialog.serial_number.text() or 'Unknown',
             )
-            self.navigation_controller.show_dashboard()
+            self.navigation_controller.show_fleet()
         except Exception as error:
             QMessageBox.critical(self, 'Error', str(error))
 
@@ -481,7 +481,7 @@ class MainWindow(QMainWindow):
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             backup = self.database_controller.import_(source)
-            self.navigation_controller.show_dashboard()
+            self.navigation_controller.show_fleet()
             QMessageBox.information(
                 self,
                 'Import complete',
@@ -528,7 +528,7 @@ class MainWindow(QMainWindow):
             def received(backup):
                 importing.close()
                 if not self._closing:
-                    self.navigation_controller.show_dashboard()
+                    self.navigation_controller.show_fleet()
                     QMessageBox.information(
                         self, 'Import complete',
                         f'Database imported successfully.\n\nPrevious database backup:\n{backup}',

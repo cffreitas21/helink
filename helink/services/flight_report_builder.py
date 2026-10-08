@@ -7,7 +7,7 @@ from html import escape
 
 from helink.models.aircraft import Aircraft
 from helink.models.flight import AlertTrigger, Flight
-from helink.services.airport_formatter import format_airport
+from helink.services.airport_lookup import format_airport
 from helink.services.flight_overview_summary import flight_parameter_statistics
 from helink.services.flight_route_service import flight_route_availability
 from helink.services.preventive_maintenance_service import (
@@ -104,7 +104,7 @@ def _trigger_text(alert):
     return '; '.join(parts) or 'No trigger details recorded'
 
 
-def technical_report(flight: Flight, aircraft: Aircraft | None = None) -> str:
+def flight_report_text(flight: Flight, aircraft: Aircraft | None = None) -> str:
     """Plain-text copy retained in the database for existing workflows."""
     data = _report_data(flight, aircraft)
     assessment = data['assessment']
@@ -259,7 +259,7 @@ def _event_table(alerts):
     )
 
 
-def technical_report_html(
+def flight_report_html(
     flight: Flight, aircraft: Aircraft | None = None,
     *, generated_at: datetime | None = None,
 ) -> str:

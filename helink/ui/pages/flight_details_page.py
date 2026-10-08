@@ -9,9 +9,10 @@ from PySide6.QtWidgets import (
 
 from helink.ui.dialogs import PdfPreviewDialog
 from helink.services.flight_route_service import nearest_route_point_index
-from helink.services.maintenance_report_builder import technical_report_html
+from helink.services.flight_report_builder import flight_report_html
 from helink.ui.tabs import (
-    AlertsTab, MapTab, OverviewTab, PreventiveMaintenanceTab, TelemetryTab,
+    EventsTab, FlightRouteTab, OverviewTab, PreventiveMaintenanceTab,
+    TelemetryTab,
 )
 
 
@@ -40,9 +41,9 @@ class FlightDetailsPage(QWidget):
         self.preventive=PreventiveMaintenanceTab()
         self.tabs.addTab(self.preventive, 'Preventive Maintenance')
         self.preventive.point_requested.connect(self.open_preventive_point)
-        self.cas=AlertsTab('CAS'); self.tabs.addTab(self.cas,'CAS')
-        self.exceed=AlertsTab('EXCEEDANCE'); self.tabs.addTab(self.exceed,'Exceedances')
-        self.route=MapTab(); self.tabs.addTab(self.route,'Flight Route')
+        self.cas=EventsTab('CAS'); self.tabs.addTab(self.cas,'CAS')
+        self.exceed=EventsTab('EXCEEDANCE'); self.tabs.addTab(self.exceed,'Exceedances')
+        self.route=FlightRouteTab(); self.tabs.addTab(self.route,'Flight Route')
         self.overview.route_requested.connect(self.open_full_route)
         self.report_tab = QWidget()
         report_layout = QVBoxLayout(self.report_tab)
@@ -146,7 +147,7 @@ class FlightDetailsPage(QWidget):
         self._loaded_tabs.add(tab)
 
     def _render_report(self):
-        self.report.setHtml(technical_report_html(self._flight, self._aircraft))
+        self.report.setHtml(flight_report_html(self._flight, self._aircraft))
         # PDF generation can update this before the tab has been opened.
         self._loaded_tabs.add(self.report_tab)
 

@@ -28,7 +28,7 @@ class _AircraftCheckBox(QCheckBox):
         painter.drawPath(tick)
 
 
-class AircraftSelectionButton(QComboBox):
+class AircraftSelector(QComboBox):
     """Dropdown with persistent checkboxes for fleet comparisons."""
 
     selection_changed = Signal(object)

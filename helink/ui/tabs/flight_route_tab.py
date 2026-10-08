@@ -9,8 +9,8 @@ from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from helink.services.map_server import get_map_server
-from helink.services.airport_formatter import format_airport
+from helink.ui.offline_map_server import get_map_server
+from helink.services.airport_lookup import format_airport
 from helink.services.flight_route_service import route_coordinates
 
 
@@ -28,7 +28,7 @@ class OfflineMapPage(QWebEnginePage):
         )
 
 
-class MapTab(QWidget):
+class FlightRouteTab(QWidget):
     def __init__(self):
         super().__init__()
         root=QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)

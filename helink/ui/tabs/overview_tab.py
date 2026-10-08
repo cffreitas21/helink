@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QToolButton, QVBoxLayout, QWidget,
 )
 
-from helink.services.airport_formatter import format_airport
+from helink.services.airport_lookup import format_airport
 from helink.services.flight_overview_summary import (
     flight_parameter_statistics, important_flight_events,
 )

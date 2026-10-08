@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QLabel
 from helink.ui.widgets.card import Card
 
 
-class Metric(Card):
+class MetricCard(Card):
     def __init__(self, label, value, sub=''):
         super().__init__()
         value_label = QLabel(str(value))

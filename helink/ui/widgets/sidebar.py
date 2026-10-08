@@ -8,7 +8,7 @@ from pathlib import Path
 class Sidebar(QFrame):
     """Main navigation component for the HELINK application."""
 
-    dashboard_requested = Signal()
+    fleet_requested = Signal()
     import_requested = Signal()
 
     def __init__(self, parent=None):
@@ -25,10 +25,10 @@ class Sidebar(QFrame):
         layout.addWidget(tagline)
         layout.addSpacing(25)
 
-        self.dashboard_button = QPushButton('Fleet Management')
-        self.dashboard_button.setObjectName('nav')
-        self.dashboard_button.clicked.connect(self.dashboard_requested)
-        layout.addWidget(self.dashboard_button)
+        self.fleet_button = QPushButton('Fleet Management')
+        self.fleet_button.setObjectName('nav')
+        self.fleet_button.clicked.connect(self.fleet_requested)
+        layout.addWidget(self.fleet_button)
 
         self.import_button = QPushButton('Import Files')
         self.import_button.setObjectName('nav')

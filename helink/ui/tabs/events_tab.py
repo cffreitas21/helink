@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 from helink.ui.widgets import StateBadge, TriggerButton
 
 
-class AlertsTab(QWidget):
+class EventsTab(QWidget):
     jump_requested = Signal(str)
 
     def __init__(self, kind):

@@ -21,9 +21,6 @@ class AircraftController:
             cache_key=('aircraft', method, args, kwargs),
         )
 
-    def dashboard_data(self):
-        return self.list_aircraft(), self.fleet_summaries()
-
     def analysis_data(self, aircraft_id, allow_comparison, parameter, minimum_minutes=0):
         if allow_comparison:
             aircraft = self.list_for_analysis()

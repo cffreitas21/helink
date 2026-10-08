@@ -11,7 +11,7 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 
-class Plot(Canvas):
+class TelemetryPlot(Canvas):
 
     point_selected=Signal(int)
 

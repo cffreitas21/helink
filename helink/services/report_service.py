@@ -4,9 +4,9 @@ from PySide6.QtCore import QMarginsF
 from PySide6.QtGui import QPageLayout, QPageSize, QTextDocument
 from PySide6.QtPrintSupport import QPrinter
 
-from helink.services.maintenance_report_builder import (
-    technical_report,
-    technical_report_html,
+from helink.services.flight_report_builder import (
+    flight_report_text,
+    flight_report_html,
 )
 
 
@@ -23,7 +23,7 @@ class ReportService:
 
     def generate(self, flight_id):
         flight, aircraft = self._records(flight_id)
-        report = technical_report(flight, aircraft)
+        report = flight_report_text(flight, aircraft)
         self.flights.save_report(flight_id, report)
         return report
 
@@ -32,7 +32,7 @@ class ReportService:
         if destination.suffix.lower() != '.pdf':
             destination = destination.with_suffix('.pdf')
         flight, aircraft = self._records(flight_id)
-        report = technical_report(flight, aircraft)
+        report = flight_report_text(flight, aircraft)
         self.flights.save_report(flight_id, report)
 
         printer = QPrinter(QPrinter.HighResolution)
@@ -45,7 +45,7 @@ class ReportService:
         )
         document = QTextDocument()
         document.setDocumentMargin(0)
-        document.setHtml(technical_report_html(flight, aircraft))
+        document.setHtml(flight_report_html(flight, aircraft))
         document.print_(printer)
         if not destination.exists() or destination.stat().st_size == 0:
             raise RuntimeError('The PDF report could not be created.')

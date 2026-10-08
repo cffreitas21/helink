@@ -18,7 +18,7 @@ FLEET_PARAMETER_KEYS = {
 }
 
 
-class DashboardPage(QWidget):
+class FleetPage(QWidget):
     aircraft_selected = Signal(str)
     analysis_requested = Signal(str)
     add_requested = Signal()

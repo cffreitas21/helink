@@ -12,12 +12,12 @@ from PySide6.QtWidgets import (
 from helink.ui.telemetry_parameters import (
     OVERVIEW_TELEMETRY_PARAMETERS, TELEMETRY_PARAMETERS,
 )
-from helink.ui.widgets.aircraft_selection_button import AircraftSelectionButton
+from helink.ui.widgets.aircraft_selector import AircraftSelector
 from helink.ui.widgets.aircraft_day_details import AircraftDayDetails
 from helink.ui.widgets.aircraft_trend_plot import AircraftTrendPlot
 from helink.ui.widgets.card import Card
-from helink.ui.widgets.flight_date_filter_button import FlightDateFilterButton
-from helink.ui.widgets.flight_duration_filter_button import FlightDurationFilterButton
+from helink.ui.widgets.flight_date_filter import FlightDateFilter
+from helink.ui.widgets.flight_duration_filter import FlightDurationFilter
 
 
 PARAMETERS = TELEMETRY_PARAMETERS + OVERVIEW_TELEMETRY_PARAMETERS
@@ -91,7 +91,7 @@ class FleetAnalysisPage(QWidget):
 
         toolbar = QHBoxLayout()
         toolbar.setSpacing(10)
-        self.aircraft_selector = AircraftSelectionButton()
+        self.aircraft_selector = AircraftSelector()
         self.aircraft_selector.selection_changed.connect(self._reload)
         toolbar.addWidget(self.aircraft_selector)
         toolbar.addWidget(QLabel('Parameter'))
@@ -114,10 +114,10 @@ class FleetAnalysisPage(QWidget):
         self.statistic.setMinimumWidth(160)
         self.statistic.currentIndexChanged.connect(self._render)
         toolbar.addWidget(self.statistic)
-        self.date_filter = FlightDateFilterButton()
+        self.date_filter = FlightDateFilter()
         self.date_filter.range_changed.connect(self._reload)
         toolbar.addWidget(self.date_filter)
-        self.duration_filter = FlightDurationFilterButton()
+        self.duration_filter = FlightDurationFilter()
         self.minimum_minutes = self.duration_filter.minimum_minutes
         self.duration_filter.minimum_changed.connect(self._reload)
         toolbar.addWidget(self.duration_filter)

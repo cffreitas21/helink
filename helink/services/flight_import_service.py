@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from helink.services.garmin_file_parser import parse_files
+from helink.services.flight_import_parser import parse_files
 
 
 ProgressCallback = Callable[[float, str], None]

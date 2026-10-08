@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 )
 
 
-class FlightDateFilterButton(QComboBox):
+class FlightDateFilter(QComboBox):
     """Date or inclusive date-range filter applied explicitly from a popup."""
 
     range_changed = Signal(object, object)

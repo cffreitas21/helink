@@ -151,7 +151,7 @@ class DatabaseManager:
                     )
 
     def _backfill_destinations(self):
-        from helink.services.airport_formatter import nearest_airport
+        from helink.services.airport_lookup import nearest_airport
 
         flights = self.connection.execute(
             "SELECT id FROM flights WHERE COALESCE(destination, '') = ''"
