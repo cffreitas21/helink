@@ -28,22 +28,27 @@ PARAMETERS = (
 
 
 def _plain(value):
+    """Represent absent report fields without leaking ``None`` to HTML."""
     return str(value) if value not in (None, '') else 'N/A'
 
 
 def _html(value):
+    """Escape a report value before inserting it into HTML."""
     return escape(_plain(value))
 
 
 def _number(value, decimals=1):
+    """Format a numeric report value or a missing-value marker."""
     return '—' if value is None else f'{value:,.{decimals}f}'
 
 
 def _measurement(value, unit, decimals=1):
+    """Format a value and its unit for a report cell."""
     return '—' if value is None else f'{_number(value, decimals)} {unit}'
 
 
 def _triggers(alert):
+    """Prefer valid structured triggers, falling back to legacy fields."""
     valid = tuple(
         item for item in alert.triggers
         if str(item.value or '').strip().upper() != 'UNK'
@@ -62,6 +67,7 @@ def _triggers(alert):
 
 
 def _report_data(flight, aircraft):
+    """Collect statistics, relevant alerts, route status, and limit findings."""
     recording = flight.engine_data or flight.data_log
     return {
         'statistics': flight_parameter_statistics(flight),
@@ -85,6 +91,7 @@ def _report_data(flight, aircraft):
 
 
 def _status(parameter):
+    """Translate a parameter's assessment severity into report text."""
     return {
         'normal': 'No upper-limit finding',
         'advisory': f'Transient review ({parameter.findings})',
@@ -94,6 +101,7 @@ def _status(parameter):
 
 
 def _trigger_text(alert):
+    """Format all usable trigger names, readings, and states."""
     parts = []
     for trigger in _triggers(alert):
         measurement = ' '.join(
@@ -105,6 +113,7 @@ def _trigger_text(alert):
 
 
 def _table_cell(value, fixed):
+    """Render a fixed-label or flight-specific report table cell."""
     opening = (
         '<td class="fixed" bgcolor="#e9eef3">' if fixed
         else '<td bgcolor="#ffffff">'
@@ -113,6 +122,7 @@ def _table_cell(value, fixed):
 
 
 def _table(headers, rows, widths=None, *, fixed_columns=()):
+    """Render report rows with optional widths and fixed-column coloring."""
     heading = ''.join(
         f'<th width="{widths[index] if widths else ""}">{_html(label)}</th>'
         for index, label in enumerate(headers)
@@ -131,6 +141,7 @@ def _table(headers, rows, widths=None, *, fixed_columns=()):
 
 
 def _facts(items):
+    """Arrange label-value facts in two columns of pairs."""
     rows = [
         (items[index][0], items[index][1],
          items[index + 1][0] if index + 1 < len(items) else '',
@@ -144,11 +155,13 @@ def _facts(items):
 
 
 def _section(number, title, content, *, new_page=False):
+    """Wrap report content in a numbered section with optional page break."""
     break_before = '<p style="page-break-before: always;"></p>' if new_page else ''
     return break_before + f'<h2>{number:02d} &nbsp; {_html(title)}</h2>{content}'
 
 
 def _event_table(alerts):
+    """Render alert events and their associated trigger values."""
     if not alerts:
         return '<p class="empty">No records available for this flight.</p>'
     return _table(
@@ -240,7 +253,11 @@ def flight_report_html(
                 events.append((
                     _plain(event.timestamp), spec.label, event.finding,
                     f'{event.observed:g} {spec.unit}',
-                    f'{event.duration_seconds} s'
+                    (
+                        f'At least {event.duration_seconds} s'
+                        if event.duration_is_open else
+                        f'{event.duration_seconds} s'
+                    )
                     if event.duration_seconds is not None else 'Unknown',
                     event.limit,
                 ))

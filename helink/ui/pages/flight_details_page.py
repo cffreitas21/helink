@@ -1,3 +1,5 @@
+"""Tabbed flight view and cross-tab navigation actions."""
+
 from pathlib import Path
 import tempfile
 
@@ -17,10 +19,12 @@ from helink.ui.tabs import (
 
 
 class FlightDetailsPage(QWidget):
+    """Host the Overview, Telemetry, Route, Events, and Report tabs."""
 
     back_requested=Signal(); import_requested=Signal(str,str)
 
     def __init__(self, aircraft_controller, flight_controller, report_controller):
+        """Create flight tabs and wire cross-tab navigation signals."""
         super().__init__(); self.aircraft_controller=aircraft_controller; self.flight_controller=flight_controller; self.report_controller=report_controller; self.fid=None; root=QVBoxLayout(self); root.setContentsMargins(20,16,20,20)
         self._flight = None
         self._aircraft = None
@@ -81,6 +85,7 @@ class FlightDetailsPage(QWidget):
         self.tabs.currentChanged.connect(self._load_selected_tab)
 
     def load(self, fid, prepared=None):
+        """Load a new flight and reset tabs to the Overview."""
         if fid == self.fid and prepared is not None and prepared is self._prepared:
             self._ensure_tab_loaded(self.tabs.currentWidget())
             return
@@ -118,17 +123,20 @@ class FlightDetailsPage(QWidget):
             self._ensure_tab_loaded(self.tabs.currentWidget())
 
     def cancel_pending(self):
+        """Cancel work associated with the previously displayed flight."""
         for tab in (self.cas, self.exceed):
             if tab.cancel_pending():
                 self._loaded_tabs.discard(tab)
 
     def _load_selected_tab(self, index):
+        """Populate a tab only when the user first selects it."""
         tab = self.tabs.widget(index)
         self._ensure_tab_loaded(tab)
         if tab is self.route and self._route_follows_telemetry:
             self._focus_route_at_selected_telemetry()
 
     def _ensure_tab_loaded(self, tab):
+        """Load a flight tab once before navigation or report generation."""
         if self._flight is None or tab is None or tab in self._loaded_tabs:
             return
         if tab in (self.cas, self.exceed):
@@ -147,21 +155,25 @@ class FlightDetailsPage(QWidget):
         self._loaded_tabs.add(tab)
 
     def _render_report(self):
+        """Build the HTML preview for the current flight."""
         self.report.setHtml(flight_report_html(self._flight, self._aircraft))
         # PDF generation can update this before the tab has been opened.
         self._loaded_tabs.add(self.report_tab)
 
     def open_parameter_chart(self, parameter_key):
+        """Open Telemetry with the selected parameter in focus."""
         self._ensure_tab_loaded(self.telemetry)
         if self.telemetry.focus_parameter(parameter_key):
             self.tabs.setCurrentWidget(self.telemetry)
 
     def open_preventive_point(self, sample_index):
+        """Open Telemetry at the engine sample behind a limit observation."""
         self._ensure_tab_loaded(self.telemetry)
         self.telemetry.slider.setValue(sample_index)
         self.tabs.setCurrentWidget(self.telemetry)
 
     def open_route_at_telemetry(self, sample):
+        """Focus the map on the GPS point nearest a telemetry sample."""
         if self._flight is None:
             return
         point_index = nearest_route_point_index(self._flight, sample)
@@ -177,10 +189,12 @@ class FlightDetailsPage(QWidget):
         self.route.focus_point(point_index)
 
     def _telemetry_position_changed(self, _index):
+        """Keep the map focused on the chosen telemetry second when linked."""
         if self._route_follows_telemetry and self.tabs.currentWidget() is self.route:
             self._focus_route_at_selected_telemetry()
 
     def _focus_route_at_selected_telemetry(self):
+        """Find the GPS point nearest the selected telemetry sample."""
         if self._flight is None or not self.telemetry.data:
             return
         sample = self.telemetry.data[self.telemetry.slider.value()]
@@ -189,12 +203,14 @@ class FlightDetailsPage(QWidget):
             self.route.focus_point(point_index)
 
     def open_full_route(self):
+        """Open the route tab with the complete flight path in view."""
         self._route_follows_telemetry = False
         self._ensure_tab_loaded(self.route)
         self.tabs.setCurrentWidget(self.route)
         self.route.show_full_route()
 
     def open_event_summary(self, event_key):
+        """Open CAS or exceedances with filters matching an event card."""
         if event_key == 'exceedances':
             self._ensure_tab_loaded(self.exceed)
             self.exceed.set_filters()
@@ -212,10 +228,12 @@ class FlightDetailsPage(QWidget):
 
     @staticmethod
     def _report_filename(flight):
+        """Suggest a deterministic PDF name from flight date and departure."""
         session = (flight.departure_time or flight.id[:8]).replace(':', '')
         return f'HELINK_Flight_Report_{flight.flight_date}_{session}.pdf'
 
     def make_report(self):
+        """Generate a temporary PDF and open its preview dialog."""
         if self.fid is None:
             return
         if self.tasks is not None:
@@ -263,6 +281,7 @@ class FlightDetailsPage(QWidget):
                 pass
 
     def _preview_background(self, destination):
+        """Generate a temporary PDF asynchronously before opening preview."""
         flight_id = self.fid
         suggested = self._report_filename(self._flight)
         progress = QProgressDialog('Preparing flight report PDF...', '', 0, 0, self)
@@ -274,12 +293,14 @@ class FlightDetailsPage(QWidget):
         progress.show()
 
         def cleanup():
+            """Release temporary preview resources after the dialog closes."""
             try:
                 Path(destination).unlink(missing_ok=True)
             except OSError:
                 pass
 
         def received(result):
+            """Show the PDF preview after successful background generation."""
             progress.close()
             path = result
             if getattr(self.window(), '_closing', False) or self.fid != flight_id:
@@ -298,6 +319,7 @@ class FlightDetailsPage(QWidget):
                 cleanup()
 
         def failed(error):
+            """Clean up and display a PDF-generation error."""
             progress.close()
             cleanup()
             if not getattr(self.window(), '_closing', False):

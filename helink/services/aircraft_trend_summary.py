@@ -1,8 +1,11 @@
+"""Summarize daily aircraft sensor trends for the analysis page."""
+
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
 class AircraftTrendSummary:
+    """First, latest, and peak daily values for an aircraft trend."""
     day_count: int
     first_date: str
     last_date: str

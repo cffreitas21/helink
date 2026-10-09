@@ -1,3 +1,5 @@
+"""Daily sensor trends for one aircraft or a selected fleet."""
+
 from colorsys import hls_to_rgb
 from datetime import date
 
@@ -29,6 +31,7 @@ AIRCRAFT_COLORS = (
 
 
 def _aircraft_color(index):
+    """Choose a stable chart color for an aircraft's position in the list."""
     if index < len(AIRCRAFT_COLORS):
         return AIRCRAFT_COLORS[index]
     red, green, blue = hls_to_rgb((index * 0.61803398875) % 1, 0.38, 0.68)
@@ -36,12 +39,14 @@ def _aircraft_color(index):
 
 
 class FleetAnalysisPage(QWidget):
+    """Plot daily aircraft trends with optional fleet comparison."""
     """Single-aircraft trends and like-for-like fleet parameter comparisons."""
 
     back_requested = Signal()
     loading_changed = Signal(bool, str)
 
     def __init__(self, aircraft_controller):
+        """Build trend controls, chart, and per-day flight details."""
         super().__init__()
         self.aircraft_controller = aircraft_controller
         self.aircraft = []
@@ -163,6 +168,7 @@ class FleetAnalysisPage(QWidget):
             widget.installEventFilter(self)
 
     def eventFilter(self, watched, event):
+        """Pass wheel events from nested charts to the page scroll area."""
         # Nested canvases and item views otherwise consume the wheel, even
         # when their own scrollbars are disabled.
         if event.type() == QEvent.Wheel and watched in self._page_scroll_targets:
@@ -171,6 +177,7 @@ class FleetAnalysisPage(QWidget):
         return super().eventFilter(watched, event)
 
     def load(self, aircraft_id=None, *, allow_comparison=True, prepared=None):
+        """Configure fleet or single-aircraft analysis and load trend data."""
         if not allow_comparison and not aircraft_id:
             raise ValueError('An aircraft is required for individual analysis.')
         self._loading = True
@@ -223,6 +230,7 @@ class FleetAnalysisPage(QWidget):
         self.scroll.verticalScrollBar().setValue(0)
 
     def _selected_aircraft_ids(self):
+        """Return comparison choices or the fixed aircraft for solo analysis."""
         # Individual analysis is pinned to its aircraft, independently of
         # the (hidden) comparison selector.
         if not self._allow_comparison:
@@ -233,6 +241,7 @@ class FleetAnalysisPage(QWidget):
         return self.aircraft_selector.selected_ids()
 
     def cancel_pending(self):
+        """Cancel outstanding trend and day-detail queries."""
         self._query_token += 1
         self._day_token += 1
         for task in (self._query_task, self._day_task):
@@ -240,15 +249,18 @@ class FleetAnalysisPage(QWidget):
                 task.cancel()
 
     def _selected_aircraft(self):
+        """Resolve selected identifiers to aircraft entities."""
         selected = set(self._selected_aircraft_ids())
         return [item for item in self.aircraft if item.id in selected]
 
     def _parameter_metadata(self):
+        """Return label and unit metadata for the chosen sensor."""
         return next(
             item for item in PARAMETERS if item[0] == self.parameter.currentData()
         )
 
     def _reload(self, *_, preloaded_days=None):
+        """Fetch trends again after parameter, aircraft, date, or duration changes."""
         if self._loading:
             return
         self._day_flight_cache.clear()
@@ -270,6 +282,7 @@ class FleetAnalysisPage(QWidget):
             self.loading_changed.emit(True, 'Loading parameter trends...')
 
             def received(days):
+                """Apply only the latest trend-query result."""
                 if token != self._query_token:
                     return
                 self.days = days
@@ -279,6 +292,7 @@ class FleetAnalysisPage(QWidget):
                 self.loading_changed.emit(False, '')
 
             def failed(error):
+                """Report an error only for the active trend query."""
                 if token == self._query_token:
                     self.loading_changed.emit(False, '')
                     QMessageBox.warning(self, self.title.text(), str(error))
@@ -306,6 +320,7 @@ class FleetAnalysisPage(QWidget):
         self._render()
 
     def _render(self, *_):
+        """Draw trend series and update the comparison summary."""
         if self._loading:
             return
         selected = self._selected_aircraft()
@@ -379,6 +394,7 @@ class FleetAnalysisPage(QWidget):
         )
 
     def _show_day(self, day):
+        """Load and display the flights behind a clicked daily data point."""
         if day.aircraft_id not in self._selected_aircraft_ids():
             return
         parameter, label, unit, _color = self._parameter_metadata()
@@ -392,11 +408,13 @@ class FleetAnalysisPage(QWidget):
             self.day_details.show_message('Loading flight statistics...')
 
             def received(flights):
+                """Cache and display a selected day's flight breakdown."""
                 if token == self._day_token:
                     self._day_flight_cache[cache_key] = flights
                     self._show_day(day)
 
             def failed(error):
+                """Report failure to load the selected day's flights."""
                 if token == self._day_token:
                     self.day_details.show_message('The flight statistics could not be loaded.')
                     QMessageBox.warning(self, self.title.text(), str(error))

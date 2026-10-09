@@ -1,3 +1,5 @@
+"""Tabs shown inside a selected flight's details page."""
+
 from helink.ui.tabs.events_tab import EventsTab
 from helink.ui.tabs.flight_route_tab import FlightRouteTab, OfflineRouteMap
 from helink.ui.tabs.overview_tab import OverviewTab

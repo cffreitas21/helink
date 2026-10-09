@@ -1,3 +1,5 @@
+"""Render and export the flight report as an A4 PDF."""
+
 from pathlib import Path
 
 from PySide6.QtCore import QMarginsF
@@ -8,17 +10,21 @@ from helink.services.flight_report_builder import flight_report_html
 
 
 class ReportService:
+    """Load a flight and render its report as an A4 PDF."""
     def __init__(self, flights, aircraft):
+        """Bind repositories used to load report flight and aircraft data."""
         self.flights = flights
         self.aircraft = aircraft
 
     def _records(self, flight_id):
+        """Load the flight and aircraft required for a report."""
         flight = self.flights.find_by_id(flight_id)
         if flight is None:
             raise ValueError('The selected flight is no longer available.')
         return flight, self.aircraft.find_by_id(flight.aircraft_id)
 
     def export_pdf(self, flight_id, destination):
+        """Save the selected flight report to a non-empty PDF file."""
         destination = Path(destination)
         if destination.suffix.lower() != '.pdf':
             destination = destination.with_suffix('.pdf')

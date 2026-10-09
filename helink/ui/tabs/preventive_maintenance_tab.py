@@ -17,10 +17,12 @@ from helink.ui.widgets import Card
 
 
 def _value(value):
+    """Format a recorded numeric value or a missing-data marker."""
     return '\N{EM DASH}' if value is None else f'{value:g}'
 
 
 def _time_label(timestamp):
+    """Display the local flight clock time from an event timestamp."""
     matches = re.findall(
         r'(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?', str(timestamp or ''),
     )
@@ -31,9 +33,11 @@ def _time_label(timestamp):
 
 
 class PreventiveMaintenanceTab(QWidget):
+    """Present AW119 upper-limit assessments and their telemetry links."""
     point_requested = Signal(int)
 
     def __init__(self):
+        """Build AW119 limit cards and the filterable observation table."""
         super().__init__()
         self.assessment = None
         root = QVBoxLayout(self)
@@ -103,9 +107,6 @@ class PreventiveMaintenanceTab(QWidget):
 
         findings = Card('Recorded limit observations')
         filters = QHBoxLayout()
-        hint = QLabel('Use See Telemetry to inspect an occurrence')
-        hint.setObjectName('muted')
-        filters.addWidget(hint)
         filters.addStretch()
         self.parameter_filter = QComboBox()
         self.parameter_filter.setObjectName('fleetAnalysisFilter')
@@ -125,9 +126,19 @@ class PreventiveMaintenanceTab(QWidget):
             'TIME', 'PARAMETER', 'FINDING', 'OBSERVED', 'LIMIT', 'DURATION',
             'ACTION',
         ))
+        self.table.horizontalHeaderItem(5).setToolTip(
+            'Estimated from consecutive timestamps, treating each value as '
+            'lasting until the next sample. Without a closing sample, the '
+            'first-to-last over-limit span is shown.'
+        )
         self.table.verticalHeader().hide()
-        self.table.verticalHeader().setDefaultSectionSize(42)
+        self.table.verticalHeader().setMinimumSectionSize(64)
+        self.table.verticalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents,
+        )
         self.table.horizontalHeader().setFixedHeight(44)
+        self.table.setWordWrap(True)
+        self.table.setTextElideMode(Qt.ElideNone)
         for column in range(6):
             self.table.horizontalHeader().setSectionResizeMode(
                 column, QHeaderView.ResizeToContents
@@ -151,12 +162,14 @@ class PreventiveMaintenanceTab(QWidget):
 
     @staticmethod
     def _set_status(label, text, state):
+        """Update a parameter badge and reapply its severity style."""
         label.setText(text)
         label.setObjectName('preventive' + state)
         label.style().unpolish(label)
         label.style().polish(label)
 
     def load(self, flight, aircraft=None):
+        """Assess the flight and render parameter and occurrence summaries."""
         model = getattr(aircraft, 'model', '') if aircraft else ''
         self.assessment = assess_preventive_maintenance(flight, model)
         result = self.assessment
@@ -193,6 +206,7 @@ class PreventiveMaintenanceTab(QWidget):
         self.scroll.verticalScrollBar().setValue(0)
 
     def _render_events(self, *_):
+        """Render filtered limit observations with telemetry jump actions."""
         if self.assessment is None:
             return
         key = self.parameter_filter.currentData()
@@ -209,9 +223,13 @@ class PreventiveMaintenanceTab(QWidget):
                 spec.label,
                 event.finding,
                 f'{event.observed:g} {spec.unit}',
-                event.limit,
+                event.limit.replace('; ', '\n', 1),
                 (
-                    f'{event.duration_seconds} s'
+                    (
+                        f'{event.duration_seconds} s+'
+                        if event.duration_is_open else
+                        f'{event.duration_seconds} s'
+                    )
                     if event.duration_seconds is not None else '\N{EM DASH}'
                 ),
             )
@@ -233,9 +251,10 @@ class PreventiveMaintenanceTab(QWidget):
             action_cell = QWidget()
             action_cell.setObjectName('tableActions')
             action_layout = QHBoxLayout(action_cell)
-            action_layout.setContentsMargins(6, 3, 6, 3)
+            action_layout.setContentsMargins(6, 4, 6, 4)
             button = QPushButton('See Telemetry')
             button.setObjectName('tableAction')
+            button.setFixedHeight(40)
             button.setAccessibleName(
                 f'See {spec.label} at {_time_label(event.timestamp)} '
                 'in Telemetry'

@@ -1,3 +1,5 @@
+"""Top-level fleet, flight-list, details, and analysis pages."""
+
 from helink.ui.pages.fleet_page import FleetPage
 from helink.ui.pages.flight_list_page import FlightListPage
 from helink.ui.pages.flight_details_page import FlightDetailsPage

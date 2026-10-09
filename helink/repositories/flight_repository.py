@@ -1,3 +1,5 @@
+"""SQL access to flights, recordings, alerts, and list summaries."""
+
 from __future__ import annotations
 
 import json
@@ -18,10 +20,12 @@ class FlightRepository:
     LIMIT_COLUMNS = frozenset({'n1', 'n2', 'nr', 'itt', 'eng_ot', 'tq'})
 
     def __init__(self, database):
+        """Use the connection managed by ``database`` for flight queries."""
         self.database = database
 
     @property
     def connection(self):
+        """Return the database connection owned by the manager."""
         return self.database.connection
 
     def find_summaries(
@@ -81,12 +85,14 @@ class FlightRepository:
         return Flight.from_record(record)
 
     def has_engine_data(self, flight_id):
+        """Check whether a flight has at least one engine sample."""
         return self.connection.execute(
             'SELECT 1 FROM engine_data WHERE flight_id=? LIMIT 1',
             (flight_id,),
         ).fetchone() is not None
 
     def has_limit_parameter_data(self, flight_id):
+        """Check whether any supported upper-limit channel was recorded."""
         return self.connection.execute(
             """SELECT 1 FROM engine_data WHERE flight_id=?
                AND (n1 IS NOT NULL OR n2 IS NOT NULL OR nr IS NOT NULL
@@ -172,6 +178,7 @@ class FlightRepository:
         return [dict(row) for row in rows]
 
     def find_by_id(self, flight_id):
+        """Load a full flight with engine, GPS, and supported alert records."""
         row = self.connection.execute(
             'SELECT * FROM flights WHERE id=?', (flight_id,)
         ).fetchone()
@@ -228,6 +235,7 @@ class FlightRepository:
         saved_ids = []
 
         def report(increment=0, message='Saving flight data...'):
+            """Accumulate row writes and forward bounded progress."""
             nonlocal completed
             completed += increment
             if progress:
@@ -248,6 +256,7 @@ class FlightRepository:
         return saved_ids
 
     def _save_flight(self, flight, report, message):
+        """Upsert one flight and replace only the imported data categories."""
         existing = self.connection.execute(
             """SELECT id, arrival_time, duration, destination, imported_files
                FROM flights
@@ -395,6 +404,7 @@ class FlightRepository:
     def _executemany_batched(
         self, sql, rows, row_count, report, message
     ):
+        """Insert large recording collections in bounded batches."""
         iterator = iter(rows)
         written = 0
         while written < row_count:
@@ -412,6 +422,7 @@ class FlightRepository:
 
     @staticmethod
     def _clock_time(value):
+        """Extract a normalized clock time from a timestamp-like value."""
         matches = re.findall(
             r'(?<!\d)([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?',
             str(value or ''),
@@ -423,12 +434,14 @@ class FlightRepository:
 
     @classmethod
     def _duration_between(cls, departure_time, arrival_time):
+        """Return a rounded duration label, handling overnight flights."""
         departure = cls._clock_time(departure_time)
         arrival = cls._clock_time(arrival_time)
         if not departure or not arrival:
             return ''
 
         def seconds(value):
+            """Convert a normalized clock to seconds since midnight."""
             hour, minute, second = map(int, value.split(':'))
             return hour * 3600 + minute * 60 + second
 
@@ -443,6 +456,7 @@ class FlightRepository:
 
     @classmethod
     def _latest_arrival_time(cls, departure_time, *candidates):
+        """Choose the latest plausible arrival relative to departure."""
         departure = cls._clock_time(departure_time)
         valid = [value for item in candidates if (value := cls._clock_time(item))]
         if not valid:
@@ -451,12 +465,14 @@ class FlightRepository:
             return valid[0]
 
         def seconds(value):
+            """Convert a normalized candidate clock to seconds."""
             hour, minute, second = map(int, value.split(':'))
             return hour * 3600 + minute * 60 + second
 
         start = seconds(departure)
 
         def elapsed(value):
+            """Reject implausible next-day readings relative to departure."""
             difference = (seconds(value) - start) % 86400
             # A reading shortly before engine start is not a next-day arrival.
             return difference if difference <= 12 * 3600 else -1
@@ -466,6 +482,7 @@ class FlightRepository:
 
     @classmethod
     def _derive_arrival_time(cls, flight):
+        """Read the last available engine or GPS timestamp in a flight."""
         for collection in ('engine_data', 'data_log'):
             for item in reversed(flight.get(collection, ())):
                 timestamp = (
@@ -477,12 +494,14 @@ class FlightRepository:
         return ''
 
     def delete(self, flight_id):
+        """Delete one flight; foreign keys remove its dependent records."""
         with self.connection:
             self.connection.execute(
                 'DELETE FROM flights WHERE id=?', (flight_id,)
             )
 
     def delete_many(self, flight_ids):
+        """Delete several flights in one transaction."""
         with self.connection:
             self.connection.executemany(
                 'DELETE FROM flights WHERE id=?',

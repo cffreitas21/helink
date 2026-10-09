@@ -1,9 +1,15 @@
+"""Application information and map attribution dialog."""
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QFrame, QLabel, QPushButton, QVBoxLayout
 
 
 class AboutDialog(QDialog):
+    """Present HELINK identity, version, and offline-map attribution."""
+    """Present HELINK identity, version, and offline-map attribution."""
     def __init__(self, parent=None):
+        """Build the About dialog and its offline-map acknowledgments."""
+        """Build the About dialog and its offline-map acknowledgments."""
         super().__init__(parent)
         self.setWindowTitle('About HELINK')
         self.setFixedSize(520, 390)

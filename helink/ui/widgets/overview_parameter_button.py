@@ -1,3 +1,5 @@
+"""Overview parameter tile that opens its telemetry chart."""
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QSizePolicy
 
@@ -10,6 +12,7 @@ class OverviewParameterButton(OverviewEventButton):
     parameter_selected = Signal(str)
 
     def __init__(self, key, label, parent=None):
+        """Create a clickable parameter tile identified by ``key``."""
         super().__init__(parent)
         self.setObjectName('overviewParameter')
         self.setCursor(Qt.PointingHandCursor)

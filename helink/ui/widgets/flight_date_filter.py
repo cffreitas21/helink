@@ -1,3 +1,5 @@
+"""Flight-list date and inclusive date-range picker."""
+
 from PySide6.QtCore import QCoreApplication, QDate, QEvent, QPoint, Signal
 from PySide6.QtGui import QActionEvent
 from PySide6.QtWidgets import (
@@ -12,6 +14,7 @@ class FlightDateFilter(QComboBox):
     range_changed = Signal(object, object)
 
     def __init__(self, parent=None):
+        """Create date-mode, calendar, and range-application controls."""
         super().__init__(parent)
         self.setObjectName('flightDateFilter')
         self.addItem('Dates: All')
@@ -79,24 +82,30 @@ class FlightDateFilter(QComboBox):
         self._update_caption()
 
     def showPopup(self):
+        """Open the custom date or date-range selector."""
         """Use the same dropdown control as sorting, with date fields inside."""
         self._popup_menu.popup(self.mapToGlobal(QPoint(0, self.height())))
 
     def hidePopup(self):
+        """Close the custom date-filter popover."""
         self._popup_menu.hide()
         super().hidePopup()
 
     def menu(self):
+        """Return the popover used to edit the flight-date filter."""
         return self._popup_menu
 
     def text(self):
+        """Return the current date-filter caption."""
         return self.currentText()
 
     @property
     def date_range(self):
+        """Return the active inclusive start and end dates."""
         return self._active_range
 
     def set_available_dates(self, dates):
+        """Update the selectable dates from the loaded flights."""
         parsed = [
             value for text in dates
             if (value := QDate.fromString(str(text), 'yyyy-MM-dd')).isValid()
@@ -105,6 +114,7 @@ class FlightDateFilter(QComboBox):
             self._available_dates = (min(parsed), max(parsed))
 
     def _mode_changed(self, *_):
+        """Show controls appropriate to a single date or a date range."""
         mode = self.mode.currentIndex()
         self.start_label.setText('Date' if mode == 1 else 'From')
         self.start_label.setVisible(mode != 0)
@@ -118,6 +128,7 @@ class FlightDateFilter(QComboBox):
         self._validate()
 
     def _validate(self, *_):
+        """Check date bounds and update the Apply button state."""
         invalid = (
             self.mode.currentIndex() == 2
             and self.start_edit.date() > self.end_edit.date()
@@ -133,6 +144,7 @@ class FlightDateFilter(QComboBox):
             self.menu().adjustSize()
 
     def apply(self):
+        """Validate and activate the chosen date or date range."""
         self.start_edit.interpretText()
         self.end_edit.interpretText()
         self._validate()
@@ -147,6 +159,7 @@ class FlightDateFilter(QComboBox):
         self.range_changed.emit(start, end)
 
     def reset(self, *_args, emit=True):
+        """Clear date bounds and optionally notify listeners."""
         self._active_range = (None, None)
         self.mode.setCurrentIndex(0)
         self._mode_changed()
@@ -156,6 +169,7 @@ class FlightDateFilter(QComboBox):
             self.range_changed.emit(None, None)
 
     def _update_caption(self):
+        """Describe the active date filter in the closed control."""
         start, end = self._active_range
         if start is None:
             text = 'Dates: All'

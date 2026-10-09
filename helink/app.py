@@ -1,3 +1,5 @@
+"""Create and run the Qt application."""
+
 from __future__ import annotations
 
 import sys
@@ -11,6 +13,7 @@ from helink.ui.theme import STYLE
 
 
 def run():
+    """Create the Qt application, apply its theme, and enter the event loop."""
     app = QApplication(sys.argv)
     app.setApplicationName('HELINK')
 

@@ -1,3 +1,5 @@
+"""Double-confirmation dialog for deleting an aircraft."""
+
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFormLayout, QInputDialog,
     QLabel, QMessageBox,
@@ -5,7 +7,11 @@ from PySide6.QtWidgets import (
 
 
 class DeleteAircraftDialog(QDialog):
+    """Require selection and two explicit confirmations before deletion."""
+    """Require selection and two explicit confirmations before deletion."""
     def __init__(self, aircraft, parent=None):
+        """Populate the aircraft selector and deletion warning."""
+        """Populate the aircraft selector and deletion warning."""
         super().__init__(parent)
         self.aircraft = list(aircraft)
         self.setWindowTitle('Delete Aircraft')
@@ -40,12 +46,16 @@ class DeleteAircraftDialog(QDialog):
 
     @property
     def selected_aircraft(self):
+        """Return the aircraft currently selected for deletion."""
+        """Return the aircraft currently selected for deletion."""
         aircraft_id = self.selector.currentData()
         return next(
             item for item in self.aircraft if item.id == aircraft_id
         )
 
     def accept(self):
+        """Confirm the destructive action and require the word ``Delete``."""
+        """Confirm the destructive action and require the word ``Delete``."""
         aircraft = self.selected_aircraft
         registration = aircraft.registration
         answer = QMessageBox.warning(

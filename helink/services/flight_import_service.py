@@ -1,3 +1,5 @@
+"""Apply flight-import eligibility and persist parsed recordings."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -11,18 +13,22 @@ ProgressCallback = Callable[[float, str], None]
 
 @dataclass(frozen=True)
 class ImportResult:
+    """Counts and rejected-file reasons returned after an import attempt."""
     flight_count: int
     file_count: int
     skipped_files: tuple[tuple[str, str], ...]
 
 
 class FlightImportService:
+    """Apply flight-import rules before persisting parsed recordings."""
     def __init__(self, flights):
+        """Use the supplied flight repository for import persistence."""
         self.flights = flights
 
     def import_for_aircraft(
         self, paths, aircraft_id, progress: ProgressCallback | None = None
     ):
+        """Parse selected files and save eligible flights for an aircraft."""
         skipped = []
         parsed = parse_files(
             paths, aircraft_id, progress=progress,
@@ -43,6 +49,7 @@ class FlightImportService:
         file_type,
         progress: ProgressCallback | None = None,
     ):
+        """Import additional classified CSV data into an existing flight."""
         existing = self.flights.find_metadata_by_id(flight_id)
         if existing is None:
             raise ValueError('The selected flight no longer exists.')
@@ -76,6 +83,7 @@ class FlightImportService:
 
     @staticmethod
     def _only_flights_with_engine_data(flights, skipped, has_existing_engine):
+        """Reject archive sessions without engine data, allowing direct CSVs."""
         eligible = []
         accepted_names = set()
         for flight in flights:
@@ -93,7 +101,9 @@ class FlightImportService:
         return eligible, len(accepted_names)
 
     def _save(self, flights, progress):
+        """Persist eligible flights and map repository progress to the UI."""
         def write_progress(completed, total, message):
+            """Map repository write progress into the final import phase."""
             if progress:
                 fraction = completed / max(1, total)
                 progress(70 + 29 * fraction, message)

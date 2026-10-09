@@ -1,3 +1,5 @@
+"""Reusable UI controls shared by HELINK pages and tabs."""
+
 from helink.ui.widgets.card import Card
 from helink.ui.widgets.chart_filter_button import ChartFilterButton
 from helink.ui.widgets.flight_date_filter import FlightDateFilter

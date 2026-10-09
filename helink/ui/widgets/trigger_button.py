@@ -1,10 +1,14 @@
+"""Button and popup for an event's recorded trigger values."""
+
 from PySide6.QtWidgets import QMenu, QSizePolicy, QToolButton
 
 from helink.models.flight import AlertTrigger
 
 
 class TriggerButton(QToolButton):
+    """Show an alert's valid triggers in a compact popup button."""
     def __init__(self, alert, parent=None):
+        """Create a trigger-count button with a detail popup for ``alert``."""
         super().__init__(parent)
         triggers = self.valid_triggers(alert)
         self.setObjectName('triggerList')
@@ -44,6 +48,7 @@ class TriggerButton(QToolButton):
 
     @staticmethod
     def valid_triggers(alert):
+        """Return trigger entries that contain usable recorded values."""
         triggers = [
             trigger for trigger in alert.triggers
             if str(trigger.value or '').strip().upper() != 'UNK'

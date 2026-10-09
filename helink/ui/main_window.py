@@ -1,3 +1,5 @@
+"""Main Qt window, page navigation, and top-level user actions."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,6 +17,7 @@ from helink.ui.widgets.loading_overlay import LoadingOverlay
 
 
 class MainWindow(QMainWindow):
+    """Compose application pages and connect UI actions to controllers."""
     def __init__(
         self,
         flight_controller,
@@ -25,6 +28,8 @@ class MainWindow(QMainWindow):
         navigation_controller,
         tasks=None,
     ):
+        """Assemble pages and connect injected controllers to UI actions."""
+        """Assemble pages and connect injected controllers to UI actions."""
         super().__init__()
         self.aircraft_controller = aircraft_controller
         self.flight_controller = flight_controller
@@ -113,6 +118,7 @@ class MainWindow(QMainWindow):
         self.navigation_controller.show_fleet()
 
     def setup_menu_bar(self):
+        """Create the File and About menus and connect their actions."""
         self.file_menu = self.menuBar().addMenu('File')
         import_action = self.file_menu.addAction('Import Database')
         import_action.triggered.connect(self.import_database)
@@ -126,9 +132,11 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self.show_about)
 
     def show_about(self):
+        """Open the application information dialog."""
         AboutDialog(self).exec()
 
     def display_fleet(self):
+        """Show the fleet page, loading its summaries asynchronously if possible."""
         if self.tasks is not None:
             return self._request_page(
                 self.fleet, self.aircraft_controller, 'fleet_data', (),
@@ -138,6 +146,7 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.fleet)
 
     def display_flight_list(self, aircraft_id):
+        """Show an aircraft's flight list with its current date and sort filters."""
         if self.tasks is not None:
             start, end = (
                 self.flight_list.date_filter.date_range
@@ -153,6 +162,7 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.flight_list)
 
     def display_flight(self, flight_id):
+        """Open a selected flight's detail pages."""
         if self.tasks is not None:
             return self._request_page(
                 self.flight_details, self.flight_controller, 'details_data', (flight_id,),
@@ -163,6 +173,7 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.flight_details)
 
     def display_fleet_analysis(self, aircraft_id=None, *, allow_comparison=True):
+        """Open fleet trends or analysis limited to a single aircraft."""
         if self.tasks is not None:
             return self._request_page(
                 self.fleet_analysis, self.aircraft_controller, 'analysis_data',
@@ -180,6 +191,7 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.fleet_analysis)
 
     def _request_page(self, page, controller, method, args, apply, message, **kwargs):
+        """Fetch page data asynchronously and ignore superseded navigation."""
         previous = self.stack.currentWidget()
         if previous is not None and hasattr(previous, 'cancel_pending'):
             previous.cancel_pending()
@@ -191,9 +203,11 @@ class MainWindow(QMainWindow):
         self.loading_overlay.show_message(message)
 
         def current():
+            """Reject responses from superseded page requests."""
             return token == self._navigation_token and not self._closing
 
         def received(data):
+            """Apply current page data and clear its loading overlay."""
             if not current():
                 return
             try:
@@ -205,6 +219,7 @@ class MainWindow(QMainWindow):
                 self.loading_overlay.hide()
 
         def failed(error):
+            """Show an error only for the still-active page request."""
             if current():
                 self.loading_overlay.hide()
                 QMessageBox.warning(self, 'Unable to load data', str(error))
@@ -214,6 +229,7 @@ class MainWindow(QMainWindow):
         )
 
     def _page_loading(self, page, busy, message):
+        """Show or hide a loading overlay on the requested page."""
         if self.stack.currentWidget() is page and not self._closing:
             if busy:
                 self.loading_overlay.show_message(message)
@@ -221,10 +237,12 @@ class MainWindow(QMainWindow):
                 self.loading_overlay.hide()
 
     def _finish_close(self):
+        """Complete shutdown once pending tasks have stopped."""
         if self._closing:
             self.close()
 
     def add_aircraft(self):
+        """Collect aircraft details and create the aircraft after validation."""
         dialog = AddAircraftDialog(self)
         if dialog.exec() != QDialog.Accepted:
             return
@@ -239,6 +257,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, 'Error', str(error))
 
     def import_global(self):
+        """Start an import after the user selects an aircraft and files."""
         aircraft = self.aircraft_controller.list_aircraft()
         if not aircraft:
             QMessageBox.information(
@@ -262,6 +281,7 @@ class MainWindow(QMainWindow):
         self.import_for_aircraft(selected_aircraft.id)
 
     def _import_progress(self):
+        """Create the progress dialog used during file import."""
         dialog = QProgressDialog(
             'Preparing flight data import...', 'Cancel Import', 0, 100, self
         )
@@ -277,6 +297,7 @@ class MainWindow(QMainWindow):
             QApplication.processEvents()
 
         def update(value, message):
+            """Update the import dialog and honor synchronous cancellation."""
             dialog.setLabelText(message)
             dialog.setValue(max(0, min(100, round(value))))
             if self.tasks is None:
@@ -287,9 +308,11 @@ class MainWindow(QMainWindow):
         return dialog, update
 
     def _run_import(self, method, args, on_success):
+        """Start a file import and report progress or errors to the user."""
         dialog, progress = self._import_progress()
 
         def received(result):
+            """Refresh data and show the completed import summary."""
             dialog.close()
             if self._closing:
                 return
@@ -298,6 +321,7 @@ class MainWindow(QMainWindow):
             ImportSummaryDialog(result, self).exec()
 
         def failed(error):
+            """Close progress feedback and report a file-import failure."""
             dialog.close()
             if not self._closing:
                 QMessageBox.critical(
@@ -315,6 +339,7 @@ class MainWindow(QMainWindow):
         handle.finished.connect(dialog.deleteLater)
 
     def import_for_aircraft(self, aircraft_id):
+        """Import selected files for the given aircraft."""
         files, _ = QFileDialog.getOpenFileNames(
             self,
             'Select Flight Data Files',
@@ -352,6 +377,7 @@ class MainWindow(QMainWindow):
             ImportSummaryDialog(result, self).exec()
 
     def import_for_flight(self, flight_id, file_type):
+        """Add a classified file to an existing flight."""
         display_type = FILE_TYPE_LABELS.get(file_type, 'Flight Data')
         files, _ = QFileDialog.getOpenFileNames(
             self,
@@ -389,6 +415,7 @@ class MainWindow(QMainWindow):
             ImportSummaryDialog(result, self).exec()
 
     def export_database(self):
+        """Prompt for a destination and export the active database."""
         suggested = str(Path.home() / 'helink-export.db')
         filename, _ = QFileDialog.getSaveFileName(
             self, 'Export Database', suggested, 'SQLite Database (*.db)'
@@ -402,6 +429,7 @@ class MainWindow(QMainWindow):
             dialog = self._transfer_progress('Exporting database...')
 
             def received(path):
+                """Close transfer feedback and report the exported path."""
                 dialog.close()
                 if not self._closing:
                     QMessageBox.information(
@@ -409,6 +437,7 @@ class MainWindow(QMainWindow):
                     )
 
             def failed(error):
+                """Close transfer feedback and report an export failure."""
                 dialog.close()
                 if not self._closing:
                     QMessageBox.critical(self, 'Export error', str(error))
@@ -428,6 +457,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, 'Export error', str(error))
 
     def import_database(self):
+        """Confirm and replace the active database from a selected file."""
         if self.tasks is not None and self.tasks.busy:
             QMessageBox.information(
                 self, 'Operation in progress',
@@ -473,6 +503,7 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
 
     def _transfer_progress(self, message):
+        """Display progress feedback for a database transfer."""
         dialog = QProgressDialog(message, '', 0, 0, self)
         dialog.setWindowTitle('Database Transfer')
         dialog.setCancelButton(None)
@@ -483,14 +514,17 @@ class MainWindow(QMainWindow):
         return dialog
 
     def _import_database_background(self, source):
+        """Replace the database after current background work has finished."""
         dialog = self._transfer_progress('Checking database...')
 
         def failed(error):
+            """Report database validation errors to the user."""
             dialog.close()
             if not self._closing:
                 QMessageBox.critical(self, 'Import error', str(error))
 
         def validated(_result):
+            """Ask for replacement confirmation after validation passes."""
             dialog.close()
             if self._closing:
                 return
@@ -505,6 +539,7 @@ class MainWindow(QMainWindow):
             importing = self._transfer_progress('Importing database...')
 
             def received(backup):
+                """Refresh the fleet and identify the automatic backup."""
                 importing.close()
                 if not self._closing:
                     self.navigation_controller.show_fleet()
@@ -514,6 +549,7 @@ class MainWindow(QMainWindow):
                     )
 
             def import_failed(error):
+                """Report a failed database replacement."""
                 importing.close()
                 if not self._closing:
                     QMessageBox.critical(self, 'Import error', str(error))
@@ -527,6 +563,7 @@ class MainWindow(QMainWindow):
         task.finished.connect(dialog.deleteLater)
 
     def closeEvent(self, event):
+        """Handle window shutdown while background work may still be active."""
         self._closing = True
         self.flight_list.cancel_pending()
         self.fleet_analysis.cancel_pending()

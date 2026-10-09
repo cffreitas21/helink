@@ -8,6 +8,7 @@ GPS_PARAMETERS = frozenset(('ias', 'alt_ind'))
 
 
 def _clock_key(timestamp):
+    """Normalize a recorded clock to an hour-minute-second lookup key."""
     matches = re.findall(
         r'(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?', str(timestamp or ''),
     )
@@ -19,6 +20,7 @@ def _clock_key(timestamp):
 
 
 def _recorded_value(record, key):
+    """Return a finite sensor value or NaN for missing measurements."""
     try:
         value = float(getattr(record, key, None))
     except (TypeError, ValueError):

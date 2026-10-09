@@ -1,3 +1,5 @@
+"""Entities for a flight, its recordings, and alert triggers."""
+
 from helink.models.flight.alert import Alert
 from helink.models.flight.alert_trigger import AlertTrigger
 from helink.models.flight.engine_data import EngineData

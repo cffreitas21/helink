@@ -1,3 +1,5 @@
+"""Dialogs for aircraft actions, import results, and PDF preview."""
+
 from helink.ui.dialogs.about_dialog import AboutDialog
 from helink.ui.dialogs.add_aircraft_dialog import AddAircraftDialog
 from helink.ui.dialogs.delete_aircraft_dialog import DeleteAircraftDialog

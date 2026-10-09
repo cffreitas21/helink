@@ -1,3 +1,5 @@
+"""Recorded engine-parameter sample entity."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,11 +8,13 @@ from typing import Any
 
 
 def _number(value):
+    """Convert a present database measurement to float without inventing zero."""
     return None if value is None else float(value)
 
 
 @dataclass(frozen=True, slots=True)
 class EngineData:
+    """One timestamped engine sample; missing measurements remain ``None``."""
     id: int
     flight_id: str
     seq: int | None = None
@@ -29,6 +33,7 @@ class EngineData:
 
     @classmethod
     def from_record(cls, record: dict[str, Any]) -> 'EngineData':
+        """Convert a database row into typed engine measurements."""
         return cls(
             id=int(record['id']),
             flight_id=str(record['flight_id']),

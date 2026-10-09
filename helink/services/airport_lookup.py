@@ -1,3 +1,5 @@
+"""Resolve ICAO names and infer destinations from offline GPS coordinates."""
+
 from __future__ import annotations
 
 import json
@@ -44,7 +46,11 @@ def format_airport(code: str | None) -> str:
 
 
 def nearest_airport(latitude, longitude, max_distance_km=5.0) -> str:
-    """Identify a nearby airfield without guessing from distant GPS points."""
+    """Return the nearest ICAO code inside the search radius, or ``''``.
+
+    The default margin is strictly less than 5 km: about 2.7 nautical miles
+    (3.1 statute miles). Distances use the haversine great-circle formula.
+    """
     try:
         latitude, longitude = float(latitude), float(longitude)
     except (TypeError, ValueError):
@@ -69,6 +75,7 @@ def nearest_airport(latitude, longitude, max_distance_km=5.0) -> str:
         arc = (sin(delta_lat / 2) ** 2
                + cos(radians(latitude)) * cos(radians(airfield_lat))
                * sin(delta_lon / 2) ** 2)
+        # 12,742 km is Earth's approximate diameter; the result is in km.
         distance = 12742 * asin(min(1.0, sqrt(max(0.0, arc))))
         if distance < closest_distance:
             closest_code, closest_distance = code, distance
@@ -76,7 +83,13 @@ def nearest_airport(latitude, longitude, max_distance_km=5.0) -> str:
 
 
 def destination_from_gps(points) -> str:
-    """Use the final valid coordinate, never an earlier point on the route."""
+    """Infer the destination from the last valid recorded GPS coordinate.
+
+    Match it to the nearest aerodrome within the default 5 km margin
+    (approximately 2.7 nautical miles, or 3.1 statute miles). Return an empty
+    code when no aerodrome falls inside that radius; earlier route points are
+    not used as a fallback.
+    """
     for point in reversed(points):
         latitude = (point.get('latitude') if isinstance(point, dict)
                     else getattr(point, 'latitude', None))

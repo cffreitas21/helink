@@ -11,6 +11,7 @@ import re
 
 @dataclass(frozen=True, slots=True)
 class LimitSpec:
+    """Configured continuous and transient upper limits for one channel."""
     key: str
     label: str
     unit: str
@@ -35,6 +36,7 @@ MAX_CONTIGUOUS_GAP_SECONDS = 2
 
 @dataclass(frozen=True, slots=True)
 class LimitEvent:
+    """One contiguous recorded departure from a parameter's normal range."""
     parameter: str
     severity: str
     finding: str
@@ -44,10 +46,12 @@ class LimitEvent:
     end_index: int
     timestamp: str
     duration_seconds: int | None
+    duration_is_open: bool
 
 
 @dataclass(frozen=True, slots=True)
 class ParameterAssessment:
+    """Overall observation and finding count for one measured parameter."""
     spec: LimitSpec
     samples: int
     observed_max: float | None
@@ -57,6 +61,7 @@ class ParameterAssessment:
 
 @dataclass(frozen=True, slots=True)
 class MaintenanceAssessment:
+    """AW119 applicability and all per-parameter limit observations."""
     applicable: bool
     message: str
     assessed_samples: int
@@ -65,6 +70,7 @@ class MaintenanceAssessment:
 
 
 def _number(value):
+    """Accept finite recorded values only; never treat absence as zero."""
     try:
         result = float(value)
     except (TypeError, ValueError):
@@ -73,6 +79,7 @@ def _number(value):
 
 
 def _clock_seconds(timestamp):
+    """Extract a valid clock time as seconds since midnight."""
     matches = re.findall(
         r'(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?', str(timestamp or ''),
     )
@@ -109,11 +116,13 @@ def _elapsed_seconds(rows):
 
 
 def aw119_limits_apply(model):
+    """Match AW119 family model names before applying AW119MKII limits."""
     normalized = re.sub(r'[^a-z0-9]', '', str(model or '').casefold())
     return any(name in normalized for name in ('aw119', 'a119', 'koala'))
 
 
 def _category(value, spec):
+    """Classify a value above continuous or transient upper limits."""
     # Lower limits are intentionally outside this first screening pass.
     if spec.transient_max is None:
         return 'above_maximum' if value > spec.continuous_max else None
@@ -125,6 +134,7 @@ def _category(value, spec):
 
 
 def _limit_text(spec, category):
+    """Describe the threshold relevant to one observed category."""
     if category == 'above_maximum':
         return f'Maximum {spec.continuous_max:g} {spec.unit}'
     if category == 'above_transient':
@@ -136,10 +146,19 @@ def _limit_text(spec, category):
     )
 
 
-def _event(spec, category, start, end, values, elapsed, rows):
+def _event(spec, category, start, end, values, elapsed, rows, close_at=None):
+    """Build an event using the next valid sample to close its duration.
+
+    With no closing sample, duration is only the observed first-to-last span.
+    This is a sample-based estimate, not a continuous sensor measurement.
+    """
+    # A recorded value is treated as lasting until the next valid sample.
+    # Without that sample, only the first-to-last span is known.
+    duration_is_open = close_at is None
+    last = close_at if close_at is not None else end
     duration = (
-        round(elapsed[end] - elapsed[start])
-        if end > start and elapsed[start] is not None and elapsed[end] is not None
+        elapsed[last] - elapsed[start]
+        if last > start and elapsed[start] is not None and elapsed[last] is not None
         else None
     )
     if category == 'transient':
@@ -159,22 +178,27 @@ def _event(spec, category, start, end, values, elapsed, rows):
     observed = max(values)
     return LimitEvent(
         spec.key, severity, finding, observed, _limit_text(spec, category),
-        start, end, str(rows[start].timestamp or ''), duration,
+        start, end, str(rows[start].timestamp or ''), duration, duration_is_open,
     )
 
 
 def _assess_parameter(spec, rows, window, elapsed):
+    """Group adjacent over-limit samples and summarize one sensor channel."""
     observed = []
     events = []
     category = None
     start = previous = None
     values = []
 
-    def finish():
+    def finish(close_at=None):
+        """Emit the current run, optionally using its closing sample."""
         nonlocal category, start, previous, values
         if category is not None:
             events.append(
-                _event(spec, category, start, previous, values, elapsed, rows)
+                _event(
+                    spec, category, start, previous, values, elapsed, rows,
+                    close_at,
+                )
             )
         category, start, previous, values = None, None, None, []
 
@@ -191,7 +215,7 @@ def _assess_parameter(spec, rows, window, elapsed):
             and 0 <= elapsed[index] - elapsed[previous] <= MAX_CONTIGUOUS_GAP_SECONDS
         )
         if current != category or category is not None and not contiguous:
-            finish()
+            finish(index if contiguous and value is not None else None)
         if current is not None:
             if category is None:
                 category, start = current, index
@@ -246,7 +270,9 @@ def screen_upper_limit_rows(rows):
                 if seq == previous[0] + 1 and delta <= MAX_CONTIGUOUS_GAP_SECONDS:
                     duration = previous[2] + delta
             runs[key] = (seq, clock, duration)
-            if duration > spec.transient_seconds:
+            # The next (non-exceeding) sample can extend the recorded run by
+            # up to the permitted sampling gap, so verify borderline runs.
+            if duration + MAX_CONTIGUOUS_GAP_SECONDS > spec.transient_seconds:
                 statuses[flight_id] = 'verify_duration'
     return statuses
 

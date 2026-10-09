@@ -1,3 +1,5 @@
+"""Read-only daily aircraft parameter aggregate."""
+
 from dataclasses import dataclass
 
 
@@ -14,6 +16,7 @@ class AircraftParameterDay:
 
     @classmethod
     def from_record(cls, record):
+        """Build the daily aggregate returned by an analysis query."""
         return cls(
             aircraft_id=str(record['aircraft_id']),
             flight_date=str(record['flight_date']),

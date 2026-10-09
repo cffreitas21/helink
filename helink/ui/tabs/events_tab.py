@@ -1,3 +1,5 @@
+"""CAS and exceedance tables with filters and trigger details."""
+
 import re
 
 from PySide6.QtCore import Qt, Signal, QTimer
@@ -11,9 +13,11 @@ from helink.ui.widgets import StateBadge, TriggerButton
 
 
 class EventsTab(QWidget):
+    """Display searchable CAS or exceedance events and their triggers."""
     jump_requested = Signal(str)
 
     def __init__(self, kind):
+        """Build an event table for CAS or exceedance records."""
         super().__init__()
         self.kind = kind
         self.all = []
@@ -82,12 +86,14 @@ class EventsTab(QWidget):
         self.level.currentTextChanged.connect(self.apply)
 
     def _search_changed(self, *_):
+        """Reapply event filters after the search text changes."""
         if self.tasks is None:
             self.apply()
         else:
             self._search_timer.start()
 
     def cancel_pending(self):
+        """Stop an in-progress incremental table render."""
         self._search_timer.stop()
         self._render_timer.stop()
         self._render_token += 1
@@ -96,6 +102,7 @@ class EventsTab(QWidget):
         return was_pending
 
     def _fit_table_to_contents(self):
+        """Resize event rows and columns to avoid clipped badges or text."""
         self.table.resizeColumnsToContents()
         header = self.table.horizontalHeader()
         for column in range(self.table.columnCount()):
@@ -136,6 +143,7 @@ class EventsTab(QWidget):
             self.table.setRowHeight(row, required_height)
 
     def set_filters(self, level='All', alert_name='All Alerts'):
+        """Select event-level and alert-name filters programmatically."""
         # Overview navigation must not retain a previous search or level filter.
         controls = (self.search, self.level, self.alert_filter)
         previous = [control.blockSignals(True) for control in controls]
@@ -161,10 +169,12 @@ class EventsTab(QWidget):
 
     @staticmethod
     def _valid_triggers(alert):
+        """Keep trigger values that are meaningful for display."""
         return TriggerButton.valid_triggers(alert)
 
     @classmethod
     def _trigger_text(cls, alert):
+        """Format a short trigger summary for the event row."""
         return ' '.join(
             f'{trigger.name} {trigger.value} {trigger.units} {trigger.state}'
             for trigger in cls._valid_triggers(alert)
@@ -172,6 +182,7 @@ class EventsTab(QWidget):
 
     @staticmethod
     def _display_time(timestamp):
+        """Format an event timestamp for the Time column."""
         value = str(timestamp or '')
         match = re.search(
             r'(\d{1,2}:\d{2}:\d{2})(?!.*\d{1,2}:\d{2}:\d{2})', value
@@ -179,6 +190,7 @@ class EventsTab(QWidget):
         return match.group(1) if match else value
 
     def load(self, flight):
+        """Load this flight's events and available filter choices."""
         self.all = [
             alert for alert in flight.alerts if alert.kind == self.kind
         ]
@@ -193,6 +205,7 @@ class EventsTab(QWidget):
         self.apply()
 
     def apply(self):
+        """Filter and render events matching the current controls."""
         self.cancel_pending()
         query = self.search.text().lower()
         selected_alert = self.alert_filter.currentText()
@@ -231,6 +244,7 @@ class EventsTab(QWidget):
             self._finish_render()
 
     def _render_next_batch(self):
+        """Append another group of rows without freezing the interface."""
         if not self._render_pending:
             return
         end = min(len(self._render_rows), self._render_offset + 24)
@@ -245,6 +259,7 @@ class EventsTab(QWidget):
             self._finish_render()
 
     def _populate_rows(self, rows, *, start=0):
+        """Render alert states, names, and trigger controls for a row batch."""
         for row, alert in enumerate(rows):
             row += start
             values = [
@@ -268,12 +283,15 @@ class EventsTab(QWidget):
                 row, self.trigger_column, self._triggers_button(alert)
             )
     def _finish_render(self):
+        """Finalize table sizing once incremental rendering is complete."""
         self._fit_table_to_contents()
         self.table.scrollToTop()
 
     @staticmethod
     def _state_badge(state):
+        """Create the colored SET or CLEARED indicator."""
         return StateBadge(state)
 
     def _triggers_button(self, alert):
+        """Create the popup control for an event's trigger details."""
         return TriggerButton(alert)

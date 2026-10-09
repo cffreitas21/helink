@@ -1,3 +1,5 @@
+"""Interactive chart canvas for a single recorded telemetry series."""
+
 from __future__ import annotations
 
 import re
@@ -12,10 +14,12 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 
 class TelemetryPlot(Canvas):
+    """Matplotlib canvas for one telemetry chart and a movable time cursor."""
 
     point_selected=Signal(int)
 
     def __init__(self, height=3):
+        """Create the chart canvas and connect point and cursor events."""
         self.fig = Figure(figsize=(7, height))
         self.fig.set_layout_engine('tight', pad=0.3)
         self.ax = self.fig.add_subplot(111)
@@ -30,14 +34,17 @@ class TelemetryPlot(Canvas):
         self.mpl_connect('draw_event', self._cache_cursor_background)
 
     def _invalidate_cursor(self, _event=None):
+        """Discard the cached cursor background after a chart change."""
         self._cursor_background = None
 
     def draw_idle(self):
+        """Avoid rasterising charts outside the visible scroll viewport."""
         # Canvases outside the scroll viewport need no rasterisation yet.
         if self.isVisible() and not self.visibleRegion().isEmpty():
             super().draw_idle()
 
     def _cache_cursor_background(self, _event):
+        """Cache static pixels for fast animated cursor movement."""
         if self._cursor_line is not None:
             # Animated cursors are excluded from the regular draw. Cache only
             # the static graph, then paint the cursor into the current frame.
@@ -45,6 +52,7 @@ class TelemetryPlot(Canvas):
             self.ax.draw_artist(self._cursor_line)
 
     def _select_point(self, event):
+        """Emit the exact sample index clicked on a line or MAX label."""
         if event.button != MouseButton.LEFT or not self._point_count:
             return
         # A MAX label can be offset from its timestamp. It must still select
@@ -61,6 +69,7 @@ class TelemetryPlot(Canvas):
         self.point_selected.emit(index)
 
     def wheelEvent(self, event):
+        """Forward wheel scrolling to the containing page's scroll area."""
         scroll_area = self.parentWidget()
         while scroll_area is not None and not isinstance(
             scroll_area, QAbstractScrollArea
@@ -81,14 +90,17 @@ class TelemetryPlot(Canvas):
         event.accept()
     @staticmethod
     def _flight_time(value):
+        """Format seconds since flight start as a readable clock offset."""
         seconds=max(0,int(round(value))); hours,remainder=divmod(seconds,3600); minutes,seconds=divmod(remainder,60)
         return f'{hours}:{minutes:02d}:{seconds:02d}' if hours else f'{minutes:02d}:{seconds:02d}'
     @staticmethod
     def _clock_time(value):
+        """Extract a readable local clock from a telemetry timestamp."""
         matches=re.findall(r'(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?',str(value or ''))
         if not matches:return '--:--:--'
         hour,minute,second=matches[-1]; return f'{int(hour):02d}:{minute}:{second or "00"}'
     def lines(self, series, title, ylabel='', cursor=None, show_max=False, flight_time=False, time_labels=None, render=True):
+        """Plot parameter series, optional clickable maxima, and flight time."""
         self._selection_axes = (self.ax,)
         self._point_count = max((len(item[1]) for item in series), default=0)
         self._selection_artists = []
@@ -138,6 +150,7 @@ class TelemetryPlot(Canvas):
             self.draw_idle()
 
     def move_cursor(self, index):
+        """Update the selected-second marker using a cached chart background."""
         if self._cursor_line is None:
             return
         self._cursor_line.set_xdata([index, index])
@@ -152,6 +165,7 @@ class TelemetryPlot(Canvas):
         self.blit(self.ax.bbox)
 
     def route(self, points):
+        """Draw a simple coordinate trace with start and end markers."""
         self._point_count = 0
         self._selection_artists = []
         self._cursor_line = None

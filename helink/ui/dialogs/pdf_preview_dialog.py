@@ -1,3 +1,5 @@
+"""Embedded PDF preview and Save PDF workflow."""
+
 from pathlib import Path
 import shutil
 
@@ -11,7 +13,11 @@ from PySide6.QtWidgets import (
 
 
 class PdfPreviewDialog(QDialog):
+    """Preview a generated PDF and let the user save a copy."""
+    """Preview a generated PDF and let the user save a copy."""
     def __init__(self, pdf_path, suggested_name, parent=None):
+        """Load a temporary PDF into the preview and configure save actions."""
+        """Load a temporary PDF into the preview and configure save actions."""
         super().__init__(parent)
         self.pdf_path = Path(pdf_path)
         self.suggested_name = suggested_name
@@ -84,12 +90,15 @@ class PdfPreviewDialog(QDialog):
         root.addLayout(footer)
 
     def _zoom(self, factor):
+        """Adjust PDF zoom while keeping it within readable bounds."""
         self.viewer.setZoomMode(QPdfView.ZoomMode.Custom)
         self.viewer.setZoomFactor(
             max(0.25, min(4.0, self.viewer.zoomFactor() * factor))
         )
 
     def save_pdf(self):
+        """Copy the previewed PDF to a user-selected destination."""
+        """Copy the previewed PDF to a user-selected destination."""
         destination, _ = QFileDialog.getSaveFileName(
             self,
             'Save Flight Report',
@@ -113,6 +122,8 @@ class PdfPreviewDialog(QDialog):
         )
 
     def release(self):
+        """Release PDF and buffer resources before removing the temporary file."""
+        """Release PDF and buffer resources before removing the temporary file."""
         self.viewer.setDocument(None)
         self.document.close()
         self.pdf_buffer.close()

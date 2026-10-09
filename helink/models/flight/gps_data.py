@@ -1,3 +1,5 @@
+"""Recorded GPS and flight-data sample entity."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,11 +8,13 @@ from typing import Any
 
 
 def _number(value):
+    """Convert a present GPS measurement to float without inventing zero."""
     return None if value is None else float(value)
 
 
 @dataclass(frozen=True, slots=True)
 class GPSData:
+    """One timestamped position and flight-data sample."""
     id: int
     flight_id: str
     seq: int | None = None
@@ -25,6 +29,7 @@ class GPSData:
 
     @classmethod
     def from_record(cls, record: dict[str, Any]) -> 'GPSData':
+        """Convert a database row into typed GPS measurements."""
         return cls(
             id=int(record['id']),
             flight_id=str(record['flight_id']),

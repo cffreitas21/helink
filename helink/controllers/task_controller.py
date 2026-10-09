@@ -11,6 +11,7 @@ from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, Signal
 
 
 class TaskHandle(QObject):
+    """Expose cancellation, progress, and completion signals for one task."""
     succeeded = Signal(object)
     failed = Signal(object)
     progress = Signal(float, str)
@@ -18,18 +19,22 @@ class TaskHandle(QObject):
     finished = Signal()
 
     def __init__(self, parent=None):
+        """Create cancellation state and progress signals for one task."""
         super().__init__(parent)
         self.stop = Event()
         self._last_progress = 0.0
 
     def cancel(self):
+        """Request cooperative cancellation of the running operation."""
         self.stop.set()
 
     def check_cancelled(self):
+        """Raise when the caller has requested cancellation."""
         if self.stop.is_set():
             raise InterruptedError('Operation cancelled.')
 
     def report(self, value, message):
+        """Emit throttled progress updates while respecting cancellation."""
         # The completion notification is sent after a committed import.
         if value < 100:
             self.check_cancelled()
@@ -40,7 +45,10 @@ class TaskHandle(QObject):
 
 
 class _DatabaseTask(QRunnable):
+    """Execute one read or serialized write on a worker-owned connection."""
+    """Execute one read or serialized write on a worker-owned connection."""
     def __init__(self, path, handle, operation, writable, write_lock):
+        """Capture the database path and operation for a worker thread."""
         super().__init__()
         self.path = path
         self.handle = handle
@@ -49,6 +57,8 @@ class _DatabaseTask(QRunnable):
         self.write_lock = write_lock
 
     def run(self):
+        """Run the operation and emit success, cancellation, or failure."""
+        """Run the operation and emit success, cancellation, or failure."""
         connection = None
         acquired = False
         try:
@@ -94,6 +104,7 @@ class _DatabaseTask(QRunnable):
 
 
 def _freeze(value):
+    """Convert nested cache-key arguments into hashable tuples."""
     if isinstance(value, dict):
         return tuple(sorted((key, _freeze(item)) for key, item in value.items()))
     if isinstance(value, (tuple, list)):
@@ -109,6 +120,7 @@ class TaskController(QObject):
     MAX_FLIGHT_SNAPSHOTS = 2
 
     def __init__(self, database, parent=None):
+        """Create the worker pool and bounded query cache for a database."""
         super().__init__(parent)
         self.database = database
         self.pool = QThreadPool(self)
@@ -120,9 +132,11 @@ class TaskController(QObject):
 
     @property
     def busy(self):
+        """Whether any background task is still active."""
         return bool(self._active)
 
     def _database_revision(self):
+        """Read signals that change when local or external database writes occur."""
         connection = self.database.connection
         return (
             id(connection), connection.total_changes,
@@ -130,10 +144,12 @@ class TaskController(QObject):
         )
 
     def invalidate(self):
+        """Discard cached query results after database changes."""
         self._cache.clear()
         self._revision = None
 
     def query(self, operation, on_result, on_error, *, cache_key=None):
+        """Run a read task, reusing a revision-matched cached result if present."""
         revision = self._database_revision()
         if revision != self._revision:
             self._cache.clear()
@@ -141,6 +157,7 @@ class TaskController(QObject):
         key = _freeze(cache_key) if cache_key is not None else None
 
         def received(value):
+            """Cache a successful read only if the database revision still matches."""
             if key is not None and revision == self._database_revision():
                 self._cache[key] = value
                 self._cache.move_to_end(key)
@@ -160,6 +177,7 @@ class TaskController(QObject):
             handle = self._connect(on_result, on_error)
 
             def deliver():
+                """Deliver a cached result on the next UI event-loop cycle."""
                 if not handle.stop.is_set():
                     handle.succeeded.emit(value)
                 else:
@@ -171,7 +189,9 @@ class TaskController(QObject):
         return self._start(operation, received, on_error, writable=False)
 
     def write(self, operation, on_result, on_error, *, on_progress=None):
+        """Run a serialized write task and invalidate cached reads on success."""
         def received(value):
+            """Invalidate cached reads after a successful write."""
             self.invalidate()
             on_result(value)
         return self._start(
@@ -179,6 +199,7 @@ class TaskController(QObject):
         )
 
     def _connect(self, on_result, on_error, on_progress=None):
+        """Create a task handle and connect callbacks on the UI thread."""
         handle = TaskHandle(self)
         self._active.add(handle)
         handle.succeeded.connect(on_result, Qt.QueuedConnection)
@@ -191,6 +212,7 @@ class TaskController(QObject):
     def run_file(self, operation, on_result, on_error, *, writable=False):
         """Transfer jobs own their connections, including during file replacement."""
         def received(value):
+            """Invalidate cached reads after a file-level write."""
             if writable:
                 self.invalidate()
             on_result(value)
@@ -201,6 +223,7 @@ class TaskController(QObject):
         return handle
 
     def _start(self, operation, on_result, on_error, *, writable, on_progress=None):
+        """Submit a database task to the worker pool."""
         handle = self._connect(on_result, on_error, on_progress)
         self.pool.start(_DatabaseTask(
             Path(self.database.path).resolve(), handle, operation,
@@ -209,11 +232,13 @@ class TaskController(QObject):
         return handle
 
     def _finished(self, handle):
+        """Remove a completed handle and announce when all tasks are idle."""
         self._active.discard(handle)
         handle.deleteLater()
         if not self._active:
             self.idle.emit()
 
     def cancel_all(self):
+        """Request cancellation of every active background task."""
         for handle in tuple(self._active):
             handle.cancel()

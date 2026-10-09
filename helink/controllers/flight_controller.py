@@ -1,3 +1,5 @@
+"""Flight retrieval, list screening, and deletion use cases."""
+
 from __future__ import annotations
 from dataclasses import replace
 from datetime import date
@@ -15,10 +17,12 @@ class FlightController:
     """Coordinates flight queries and lifecycle operations."""
 
     def __init__(self, repository: FlightRepository, tasks=None):
+        """Bind flight storage and an optional background task runner."""
         self.repository = repository
         self.tasks = tasks
 
     def request(self, method, *args, on_result, on_error, **kwargs):
+        """Run a flight query off the UI thread and cache its result."""
         return self.tasks.query(
             lambda database, _progress: getattr(
                 FlightController(FlightRepository(database)), method,
@@ -28,6 +32,7 @@ class FlightController:
         )
 
     def details_data(self, flight_id):
+        """Load a flight and aircraft together for the details view."""
         flight = self.get(flight_id)
         if flight is None:
             raise ValueError('The selected flight is no longer available.')
@@ -35,12 +40,14 @@ class FlightController:
         return prepare_flight_details(flight, aircraft)
 
     def list_page_data(self, aircraft_id, **kwargs):
+        """Load the aircraft identity and its filtered flight list."""
         aircraft = AircraftRepository(self.repository.database).find_by_id(aircraft_id)
         return aircraft, self.list_flights(aircraft_id, **kwargs)
 
     def list_flights(
         self, aircraft_id=None, *, start_date=None, end_date=None, descending=True,
     ):
+        """List flights with dates and AW119 limit indicators applied."""
         start = date.fromisoformat(str(start_date)).isoformat() if start_date else None
         end = date.fromisoformat(str(end_date)).isoformat() if end_date else None
         if start and end and start > end:
@@ -95,10 +102,13 @@ class FlightController:
         return result
 
     def get(self, flight_id):
+        """Load a flight with its recorded data by identifier."""
         return self.repository.find_by_id(flight_id)
 
     def delete(self, flight_id):
+        """Remove a single flight and its dependent records."""
         self.repository.delete(flight_id)
 
     def delete_many(self, flight_ids):
+        """Remove the selected flights as one repository operation."""
         self.repository.delete_many(flight_ids)

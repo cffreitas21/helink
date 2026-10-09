@@ -1,9 +1,13 @@
+"""Colored event-state badge used in alert tables."""
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 
 class StateBadge(QWidget):
+    """Render an alert's SET or CLEARED state as a colored badge."""
     def __init__(self, state, parent=None):
+        """Style the badge according to the recorded event state."""
         super().__init__(parent)
         normalized = str(state or '').strip().upper()
         object_name = {

@@ -1,3 +1,5 @@
+"""Classify, parse, and associate supported flight CSV files."""
+
 from __future__ import annotations
 
 import csv
@@ -32,10 +34,12 @@ ProgressCallback = Callable[[float, str], None]
 
 @lru_cache(maxsize=1024)
 def _normalized_text(value: str) -> str:
+    """Remove punctuation and case differences from a field label."""
     return re.sub(r'[^a-z0-9]', '', value.lower())
 
 
 def _norm(value: Any) -> str:
+    """Normalize any value for tolerant CSV-column matching."""
     return _normalized_text(str(value or ''))
 
 
@@ -45,11 +49,13 @@ class _ParsedRow(dict):
     __slots__ = ('normalized',)
 
     def __init__(self, values):
+        """Keep original row values and build a normalized header index."""
         super().__init__(values)
         self.normalized = {_norm(key): value for key, value in values.items()}
 
 
 def _num(value: Any) -> float | None:
+    """Parse finite decimal values, preserving missing data as ``None``."""
     try:
         text = str(value).strip().replace(' ', '').replace(',', '.')
         number = float(text)
@@ -62,6 +68,7 @@ def _read(
     data: bytes,
     row_progress: Callable[[float], None] | None = None,
 ) -> tuple[list[dict], list[str]]:
+    """Decode CSV bytes, locate the header, and normalize the data rows."""
     text = data.decode('utf-8-sig', errors='replace')
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines:
@@ -157,6 +164,7 @@ def _read(
 
 
 def _get(row: dict, *aliases, default=''):
+    """Find a CSV value by normalized exact or compatible column alias."""
     index = (
         row.normalized
         if isinstance(row, _ParsedRow)
@@ -175,6 +183,7 @@ def _get(row: dict, *aliases, default=''):
 
 
 def _detect(name: str, forced: str | None = None):
+    """Classify a supported source filename or use a chosen file type."""
     if forced:
         return (forced, FILE_TYPES[forced][0]) if forced in FILE_TYPES else (None, None)
     lowered = name.replace('\\', '/').rsplit('/', 1)[-1].lower()
@@ -199,6 +208,7 @@ def _format_issue(kind, headers, rows):
     names = {_norm(header) for header in headers}
 
     def has(*aliases):
+        """Check whether any required normalized header is present."""
         return any(alias in names for alias in aliases)
 
     if kind == 'gps':
@@ -218,6 +228,7 @@ def _format_issue(kind, headers, rows):
 
 
 def _date(value):
+    """Normalize a supported date representation to ISO format."""
     text = str(value or '').strip()
     for pattern in ('%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d'):
         try:
@@ -228,6 +239,7 @@ def _date(value):
 
 
 def _stamp(name: str):
+    """Extract date, local time, and origin code from a source filename."""
     upper = name.upper()
     match = re.search(
         r'(20\d{2})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})_([A-Z0-9]{3,4})',
@@ -260,6 +272,7 @@ def _stamp(name: str):
 
 
 def _clock_time(value):
+    """Extract a valid ``HH:MM:SS`` clock from a timestamp."""
     matches = re.findall(
         r'(?<!\d)([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?',
         str(value or ''),
@@ -271,12 +284,14 @@ def _clock_time(value):
 
 
 def _duration_between(departure_time, arrival_time):
+    """Format rounded elapsed minutes, including a midnight crossing."""
     departure = _clock_time(departure_time)
     arrival = _clock_time(arrival_time)
     if not departure or not arrival:
         return ''
 
     def seconds(value):
+        """Convert a clock string to seconds for duration arithmetic."""
         hour, minute, second = map(int, value.split(':'))
         return hour * 3600 + minute * 60 + second
 
@@ -294,6 +309,7 @@ SESSION_MARGIN = timedelta(minutes=20)
 
 
 def _moment(value, flight_date):
+    """Resolve a timestamp to a datetime using the flight date if needed."""
     text = str(value or '').strip()
     iso = re.search(r'(20\d{2}-\d{2}-\d{2})[ T](\d{1,2}:\d{2}(?::\d{2})?)', text)
     if iso:
@@ -319,12 +335,14 @@ def _moment(value, flight_date):
 
 
 def _row_moment(row, flight_date):
+    """Read the best available date and time from one CSV row."""
     value = _get(row, 'Timestamp', 'Lcl Time', 'Time')
     row_date = _date(_get(row, 'Lcl Date', 'Date'))
     return _moment(value, row_date or flight_date)
 
 
 def _file_window(rows, flight_date, fallback_time):
+    """Find the first and last parseable times in a source file."""
     times = (
         _row_moment(row, flight_date)
         for row in rows
@@ -343,6 +361,7 @@ def _file_window(rows, flight_date, fallback_time):
 
 
 def _session_from_record(record):
+    """Build an association window from an already imported flight."""
     date = record['flight_date']
     starts = [value for candidate in (
         record.get('engine_start'), record.get('gps_start'),
@@ -366,6 +385,7 @@ def _session_from_record(record):
 
 
 def _nearest_session(moment, sessions):
+    """Select the closest flight session within the 20-minute margin."""
     if moment is None:
         return None
     best = None
@@ -386,6 +406,7 @@ def _nearest_session(moment, sessions):
 
 
 def _triggers(row: dict) -> list[dict]:
+    """Collect complete trigger groups, ignoring unknown values."""
     triggers = []
     for key, name in row.items():
         match = re.fullmatch(r'Trigger Name(?:_(\d+))?', key, re.IGNORECASE)
@@ -405,6 +426,7 @@ def _triggers(row: dict) -> list[dict]:
 
 
 def _alert(row: dict, level=None):
+    """Convert a supported CSV row into a normalized alert record."""
     name = _get(
         row, 'Alert Name', 'AlertName', 'Alert', 'Message', default='Alert'
     )
@@ -453,6 +475,7 @@ def _alert(row: dict, level=None):
 
 
 def _vne_alert(row: dict) -> dict:
+    """Convert a VNE data row into an exceedance alert."""
     alert = _alert(row, 'WARNING')
     for key, name in row.items():
         if not _norm(key).startswith('triggername'):
@@ -469,6 +492,7 @@ def _vne_alert(row: dict) -> dict:
 
 
 def _collect_csv_blobs(paths, progress: ProgressCallback | None, skipped, forced_type):
+    """Read direct CSV files and CSV members of archives for parsing."""
     blobs = []
     total = max(1, len(paths))
     for index, raw_path in enumerate(paths, 1):
@@ -514,6 +538,11 @@ def parse_files(
     existing_sessions: list[dict] | None = None,
     target_flight: dict | None = None,
 ):
+    """Classify CSV inputs, associate rows with flight sessions, and report skips.
+
+    ZIP inputs are expanded, direct CSV inputs may stand alone, and a target
+    flight may be supplied when adding files to an existing recording.
+    """
     skipped = skipped_files if skipped_files is not None else []
     blobs = _collect_csv_blobs(paths, progress, skipped, forced_type)
     if not blobs:
@@ -637,6 +666,7 @@ def parse_files(
     orphan_sessions = {}
 
     def group_for(session):
+        """Return the parsed-record group associated with a flight session."""
         key = session['id']
         if key not in groups:
             groups[key] = {

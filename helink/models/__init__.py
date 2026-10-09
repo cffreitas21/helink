@@ -1,3 +1,5 @@
+"""Public aircraft and flight data entities."""
+
 from helink.models.aircraft import Aircraft
 from helink.models.flight import Alert, EngineData, Flight, GPSData
 

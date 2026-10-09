@@ -1,3 +1,5 @@
+"""Application sidebar with branding and primary navigation."""
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QVBoxLayout
@@ -12,6 +14,7 @@ class Sidebar(QFrame):
     import_requested = Signal()
 
     def __init__(self, parent=None):
+        """Build branding, navigation controls, and the sidebar image."""
         super().__init__(parent)
         self.setObjectName('sidebar')
         self.setFixedWidth(235)

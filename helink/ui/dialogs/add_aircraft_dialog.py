@@ -1,10 +1,16 @@
+"""Form for registering a new aircraft."""
+
 from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QMessageBox,
 )
 
 
 class AddAircraftDialog(QDialog):
+    """Collect the identity fields needed to register an aircraft."""
+    """Collect the identity fields needed to register an aircraft."""
     def __init__(self, parent=None):
+        """Create fields for tail number, model, and serial number."""
+        """Create fields for tail number, model, and serial number."""
         super().__init__(parent)
         self.setWindowTitle('Register New Aircraft')
         self.setMinimumWidth(440)
@@ -21,6 +27,8 @@ class AddAircraftDialog(QDialog):
         form.addRow(buttons)
 
     def accept(self):
+        """Accept only after a tail number has been supplied."""
+        """Accept only after a tail number has been supplied."""
         if not self.prefix.text().strip():
             QMessageBox.warning(
                 self, 'Missing information', 'Enter the aircraft registration.'

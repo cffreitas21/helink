@@ -1,3 +1,5 @@
+"""Offline route-map tab and its embedded browser view."""
+
 from pathlib import Path
 import json
 import uuid
@@ -15,7 +17,9 @@ from helink.services.flight_route_service import route_coordinates
 
 
 class OfflineMapPage(QWebEnginePage):
+    """Keep map content embedded while opening external links in a browser."""
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        """Allow local map navigation and redirect external links."""
         if (
             navigation_type == QWebEnginePage.NavigationTypeLinkClicked
             and url.scheme() in ('http', 'https')
@@ -29,7 +33,9 @@ class OfflineMapPage(QWebEnginePage):
 
 
 class FlightRouteTab(QWidget):
+    """Display an offline map or a reason the route is unavailable."""
     def __init__(self):
+        """Create the route status panel and embedded offline map."""
         super().__init__()
         root=QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
         self.status = QLabel()
@@ -41,26 +47,32 @@ class FlightRouteTab(QWidget):
         self.map.status_changed.connect(self._show_status)
 
     def _show_status(self, message):
+        """Show a route-unavailable explanation in place of the map."""
         self.status.setText(message)
         self.status.setVisible(bool(message))
 
     def load(self,f):
+        """Load GPS points from the selected flight into the map."""
         self.map.load_route(
             f.data_log,
             format_airport(f.destination) if f.destination else '',
         )
 
     def focus_point(self, index):
+        """Center the route map on a recorded point."""
         self.map.focus_point(index)
 
     def show_full_route(self):
+        """Fit the complete route inside the map viewport."""
         self.map.show_full_route()
 
 
 class OfflineRouteMap(QWebEngineView):
+    """Render the bundled offline map and flight path in Qt WebEngine."""
     status_changed = Signal(str)
 
     def __init__(self, parent=None):
+        """Configure a WebEngine view for locally served route documents."""
         super().__init__(parent)
         self.assets = Path(__file__).resolve().parents[2] / "assets" / "map"
         self.server = get_map_server(self.assets)
@@ -80,6 +92,7 @@ class OfflineRouteMap(QWebEngineView):
         self.destroyed.connect(lambda *_: server.remove_document(name))
 
     def _load_finished(self, ok):
+        """Apply any queued focus once the offline document has loaded."""
         self._route_loaded = ok
         self.status_changed.emit(
             '' if ok else
@@ -91,15 +104,18 @@ class OfflineRouteMap(QWebEngineView):
             self._apply_focus()
 
     def _refresh_map(self):
+        """Reload the generated route document in the embedded browser."""
         self.page().runJavaScript(
             'if (window.refreshRouteMap) window.refreshRouteMap(!window.routeFocused);'
         )
 
     def focus_point(self, index):
+        """Focus a route point, deferring the request until the map loads."""
         self._pending_focus_index = index
         self._apply_focus()
 
     def show_full_route(self):
+        """Request a view that contains all valid route points."""
         self._pending_focus_index = None
         if self._route_loaded:
             self.page().runJavaScript(
@@ -107,6 +123,7 @@ class OfflineRouteMap(QWebEngineView):
             )
 
     def _apply_focus(self):
+        """Send the pending route-point focus command to the map."""
         if self._route_loaded and self._pending_focus_index is not None:
             self.page().runJavaScript(
                 f'if (window.focusRoutePoint) '
@@ -114,17 +131,20 @@ class OfflineRouteMap(QWebEngineView):
             )
 
     def showEvent(self, event):
+        """Refresh the map when its view becomes visible."""
         super().showEvent(event)
         QTimer.singleShot(0, self._refresh_map)
 
     @staticmethod
     def _point(row):
+        """Convert a GPS row into a validated map point and display values."""
         coordinates = route_coordinates(row)
         if coordinates is None:
             return None
         lat, lon = coordinates
 
         def value(attribute):
+            """Read one optional GPS field for a map popup."""
             item = getattr(row, attribute)
             return str(item).strip() if item is not None and str(item).strip() else "-"
 
@@ -138,6 +158,7 @@ class OfflineRouteMap(QWebEngineView):
         }
 
     def load_route(self, rows, destination=''):
+        """Build and display an offline route document from GPS rows."""
         self._route_loaded = False
         self._pending_focus_index = None
         points = [point for row in (rows or []) if (point := self._point(row))]

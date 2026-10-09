@@ -1,3 +1,5 @@
+"""Flight-row checkboxes and the select-all table header."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, QSize, Qt, Signal
@@ -12,6 +14,7 @@ def _draw_selection_box(
     enabled=True,
     hovered=False,
 ):
+    """Paint a consistent checkbox for flight rows and select-all header."""
     painter.save()
     painter.setRenderHint(QPainter.Antialiasing)
 
@@ -58,6 +61,7 @@ class FlightSelectionButton(QAbstractButton):
     """Compact, consistently rendered checkbox for a flight row."""
 
     def __init__(self, parent=None):
+        """Create a selectable square for one flight row."""
         super().__init__(parent)
         self.setObjectName('flightSelector')
         self.setCheckable(True)
@@ -67,9 +71,11 @@ class FlightSelectionButton(QAbstractButton):
         self.setAccessibleName('Select flight')
 
     def sizeHint(self):
+        """Reserve enough space for a clearly visible selection square."""
         return QSize(25, 25)
 
     def paintEvent(self, event: QPaintEvent):
+        """Paint the row checkbox with selected and hover states."""
         painter = QPainter(self)
         state = Qt.Checked if self.isChecked() else Qt.Unchecked
         _draw_selection_box(
@@ -87,6 +93,7 @@ class SelectAllHeader(QHeaderView):
     toggle_all_requested = Signal(bool)
 
     def __init__(self, orientation=Qt.Horizontal, parent=None):
+        """Create a table header with an integrated select-all checkbox."""
         super().__init__(orientation, parent)
         self._check_state = Qt.Unchecked
         self._check_enabled = False
@@ -94,18 +101,21 @@ class SelectAllHeader(QHeaderView):
         self.setToolTip('Select or clear every flight')
 
     def set_check_state(self, state):
+        """Set the select-all indicator to checked, unchecked, or partial."""
         if self._check_state == state:
             return
         self._check_state = state
         self.updateSection(0)
 
     def set_check_enabled(self, enabled):
+        """Enable select-all only when the table contains selectable rows."""
         if self._check_enabled == enabled:
             return
         self._check_enabled = enabled
         self.updateSection(0)
 
     def paintSection(self, painter: QPainter, rect: QRect, logical_index: int):
+        """Draw the select-all control inside its header section."""
         super().paintSection(painter, rect, logical_index)
         if logical_index != 0:
             return
@@ -129,6 +139,7 @@ class SelectAllHeader(QHeaderView):
         )
 
     def mouseReleaseEvent(self, event: QMouseEvent):
+        """Toggle all flight rows when the header control is clicked."""
         logical_index = self.logicalIndexAt(event.position().toPoint())
         if logical_index == 0 and self._check_enabled:
             self.toggle_all_requested.emit(

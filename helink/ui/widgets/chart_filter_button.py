@@ -1,3 +1,5 @@
+"""Multi-select popover for telemetry chart visibility."""
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox, QFrame, QHBoxLayout, QLabel, QMenu, QPushButton,
@@ -6,7 +8,9 @@ from PySide6.QtWidgets import (
 
 
 class _ChartCheckBox(QCheckBox):
+    """Make the full chart-filter option respond to clicks."""
     def hitButton(self, position):
+        """Use the complete option rectangle as the checkbox hit area."""
         # Treat the entire menu row as a checkbox target, including whitespace.
         # Otherwise an ignored click can propagate to QMenu and close it.
         return self.rect().contains(position)
@@ -18,6 +22,7 @@ class ChartFilterButton(QToolButton):
     selection_changed = Signal(object)
 
     def __init__(self, parameters, parent=None):
+        """Build a popup of checkable telemetry parameters."""
         super().__init__(parent)
         self.parameters = tuple(parameters)
         self.checkboxes = {}
@@ -65,6 +70,7 @@ class ChartFilterButton(QToolButton):
         self._update_caption()
 
     def selected_keys(self):
+        """Return parameter keys currently enabled in the chart picker."""
         return tuple(
             key for key, checkbox in self.checkboxes.items()
             if checkbox.isChecked()
@@ -83,6 +89,7 @@ class ChartFilterButton(QToolButton):
         self._update_caption()
 
     def set_selected(self, keys):
+        """Select exactly the provided chart parameter keys."""
         selected = set(keys)
         for key, checkbox in self.checkboxes.items():
             blocked = checkbox.blockSignals(True)
@@ -93,8 +100,10 @@ class ChartFilterButton(QToolButton):
         self._emit_selection()
 
     def _update_caption(self):
+        """Summarize how many chart channels are currently selected."""
         self.setText(f'Charts ({len(self.selected_keys())}/{len(self.checkboxes)})')
 
     def _emit_selection(self, *_):
+        """Notify the telemetry tab when the chosen channels change."""
         self._update_caption()
         self.selection_changed.emit(self.selected_keys())

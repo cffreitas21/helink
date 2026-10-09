@@ -1,3 +1,5 @@
+"""Combined telemetry chart with independent unit axes and mouse navigation."""
+
 from math import isfinite
 
 from PySide6.QtCore import Qt
@@ -11,6 +13,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
     """Shared timeline with physical scales kept separate by measurement unit."""
 
     def __init__(self):
+        """Prepare axes, zoom bounds, and mouse-pan state."""
         super().__init__(4.2)
         self.unit_axes = {}
         self.parameter_lines = {}
@@ -25,6 +28,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
         self.mpl_connect('button_release_event', self._release_view)
 
     def parameters(self, series, time_labels=(), cursor=0, *, render=True, preserve_view=False):
+        """Draw selected channels on one timeline with separate unit axes."""
         self._pressed_at = None
         self._pan_start = None
         self._dragged = False
@@ -128,6 +132,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
 
     @staticmethod
     def _bounded_interval(limits, bounds, minimum):
+        """Clamp a viewed axis interval to available data and minimum width."""
         left, right = sorted(limits)
         lower, upper = bounds
         if not all(isfinite(value) for value in (left, right)):
@@ -149,6 +154,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
         self.draw_idle()
 
     def reset_view(self):
+        """Restore the complete flight and original measurement ranges."""
         self.ax.set_xlim(self._full_xlim)
         for unit, axis in self.unit_axes.items():
             axis.set_ylim(self._full_ylims[unit])
@@ -156,6 +162,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
         self.draw_idle()
 
     def zoom_view(self, factor, *, x_fraction=None, y_fraction=0.5):
+        """Zoom around a relative point while respecting flight bounds."""
         if self._point_count < 2 or not isfinite(factor) or factor <= 0:
             return
         left, right = self.ax.get_xlim()
@@ -175,6 +182,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
         self.limit_view()
 
     def _scroll_zoom(self, event):
+        """Zoom around the mouse position on a matplotlib scroll event."""
         if not event.step or event.inaxes not in self._selection_axes:
             return
         box = self.ax.bbox
@@ -185,6 +193,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
         )
 
     def wheelEvent(self, event):
+        """Apply mouse-wheel zoom to the combined chart."""
         x, y = self.mouseEventCoords(event)
         if self._point_count > 1 and self.ax.bbox.contains(x, y):
             steps = event.angleDelta().y() / 120 or event.pixelDelta().y() / 120
@@ -196,6 +205,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
         super().wheelEvent(event)
 
     def _select_point(self, event):
+        """Record a left press for click selection or a possible pan."""
         # Delay selection until release: the same left button can start a pan.
         if event.button != MouseButton.LEFT:
             return
@@ -218,6 +228,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
         )
 
     def _drag_view(self, event):
+        """Pan the combined axes while the mouse button is held."""
         if self._pressed_at is None:
             self.setCursor(Qt.ArrowCursor)
             return
@@ -242,6 +253,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
         self.limit_view()
 
     def _release_view(self, event):
+        """Finish panning or select the clicked point, then restore the pointer."""
         if event.button != MouseButton.LEFT or self._pressed_at is None:
             return
         pressed_at = self._pressed_at
@@ -257,6 +269,7 @@ class CombinedTelemetryPlot(TelemetryPlot):
             super()._select_point(event)
 
     def move_cursor(self, index):
+        """Move the shared time cursor without redrawing all data series."""
         left, right = self.ax.get_xlim()
         if self._point_count and not left <= index <= right:
             width = right - left

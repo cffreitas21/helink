@@ -1,3 +1,5 @@
+"""Copyable flight-by-flight details for a selected analysis day."""
+
 from datetime import date
 from math import ceil
 
@@ -10,6 +12,7 @@ class AircraftDayDetails(QPlainTextEdit):
     """Copyable flight breakdown that expands within the page's scroll area."""
 
     def __init__(self, parent=None):
+        """Create a read-only, selectable panel that grows with its text."""
         super().__init__(parent)
         self.setObjectName('fleetAnalysisDay')
         self.setReadOnly(True)
@@ -26,12 +29,14 @@ class AircraftDayDetails(QPlainTextEdit):
         self.reset()
 
     def show_message(self, text):
+        """Show copyable text and resize the panel to its wrapped content."""
         self.setPlainText(text)
         self._fit_height()
         self.setTextCursor(QTextCursor(self.document()))
         self.verticalScrollBar().setValue(0)
 
     def _fit_height(self, *_):
+        """Fit all wrapped detail lines without an inner scroll bar."""
         # QPlainTextDocumentLayout reports visual lines, including wrapped
         # lines, rather than a pixel height.
         lines = max(1, self.document().documentLayout().documentSize().height())
@@ -40,17 +45,21 @@ class AircraftDayDetails(QPlainTextEdit):
             self.setFixedHeight(height)
 
     def resizeEvent(self, event):
+        """Recalculate the panel height when its available width changes."""
         super().resizeEvent(event)
         self._fit_height()
 
     def reset(self):
+        """Show the prompt used before a day is selected."""
         self.show_message('Click a recorded day to inspect its values.')
 
     @staticmethod
     def _value(value, unit):
+        """Format a daily reading or a missing-value marker."""
         return '\N{EM DASH}' if value is None else f'{value:.1f} {unit}'
 
     def show_day(self, registration, label, unit, day, flights):
+        """Show each flight's readings followed by the day's AVG and MAX."""
         stamp = date.fromisoformat(day.flight_date).strftime('%d/%m/%Y')
         lines = [f'{registration} \N{MIDDLE DOT} {stamp} \N{MIDDLE DOT} {label}']
         for index, flight in enumerate(flights, start=1):

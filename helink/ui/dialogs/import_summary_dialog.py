@@ -1,3 +1,5 @@
+"""Summary of imported flights and rejected files."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
@@ -11,6 +13,8 @@ class ImportSummaryDialog(QDialog):
     """Show the final import outcome, including every excluded file."""
 
     def __init__(self, result, parent=None):
+        """Summarize imported flights and every skipped file reason."""
+        """Summarize imported flights and every skipped file reason."""
         super().__init__(parent)
         skipped = result.skipped_files
         title = (

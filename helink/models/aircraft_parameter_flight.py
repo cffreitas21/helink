@@ -1,3 +1,5 @@
+"""Read-only flight parameter aggregate for trend drill-down."""
+
 from dataclasses import dataclass
 
 
@@ -16,6 +18,7 @@ class AircraftParameterFlight:
 
     @classmethod
     def from_record(cls, record):
+        """Build per-flight sensor statistics from a query result."""
         return cls(
             flight_id=str(record['flight_id']),
             aircraft_id=str(record['aircraft_id']),

@@ -1,3 +1,5 @@
+"""Immutable aircraft entity used by repositories and views."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,6 +9,7 @@ from typing import Any
 
 @dataclass(frozen=True, slots=True)
 class Aircraft:
+    """Immutable aircraft identity with an optional flight-list count."""
     id: str
     registration: str
     model: str
@@ -16,6 +19,7 @@ class Aircraft:
 
     @classmethod
     def from_record(cls, record: dict[str, Any]) -> 'Aircraft':
+        """Convert a database row or mapping into an aircraft entity."""
         return cls(
             id=str(record['id']),
             registration=str(record['registration']),

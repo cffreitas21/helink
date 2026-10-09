@@ -1,3 +1,5 @@
+"""Flight Overview with identity, parameters, and important events."""
+
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea,
@@ -39,12 +41,14 @@ PARAMETER_GROUPS = (
 
 
 class OverviewTab(QWidget):
+    """Display a compact flight summary, key readings, and important events."""
     import_requested = Signal(str)
     event_requested = Signal(str)
     route_requested = Signal()
     parameter_requested = Signal(str)
 
     def __init__(self):
+        """Build the flight-summary, parameter, and event sections."""
         super().__init__()
         root = QHBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -172,6 +176,7 @@ class OverviewTab(QWidget):
         root.addWidget(files_panel)
 
     def _parameter_tile(self, key, label, unit):
+        """Build a clickable AVG/MAX tile for one recorded parameter."""
         metric = OverviewParameterButton(key, label)
         metric.parameter_selected.connect(self.parameter_requested)
         layout = QVBoxLayout(metric)
@@ -207,6 +212,7 @@ class OverviewTab(QWidget):
         return metric
 
     def eventFilter(self, watched, event):
+        """Handle interaction with overview parameter and event cards."""
         if event.type() == QEvent.Resize:
             available = max(0, event.size().width() - 34)
             columns = 4 if available >= 740 else (
@@ -229,6 +235,7 @@ class OverviewTab(QWidget):
         return super().eventFilter(watched, event)
 
     def load(self, flight, *, statistics=None, events=None, route=None):
+        """Populate the Overview from recorded data and prepared summaries."""
         for key, text in (
             ('date', flight.flight_date), ('departure', flight.departure_time),
             ('arrival', flight.arrival_time), ('duration', flight.duration),

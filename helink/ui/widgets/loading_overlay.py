@@ -1,3 +1,5 @@
+"""Overlay used while asynchronous page content is loading."""
+
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QLabel, QProgressBar, QVBoxLayout, QWidget
 
@@ -6,6 +8,7 @@ class LoadingOverlay(QWidget):
     """Hide stale page content while leaving application navigation available."""
 
     def __init__(self, parent):
+        """Attach the loading layer to the page it covers."""
         super().__init__(parent)
         self.setObjectName('pageLoadingOverlay')
         self.setAttribute(Qt.WA_StyledBackground)
@@ -26,12 +29,14 @@ class LoadingOverlay(QWidget):
         self.hide()
 
     def show_message(self, message):
+        """Display a loading message over the parent view."""
         self.message.setText(message)
         self.setGeometry(self.parentWidget().rect())
         self.show()
         self.raise_()
 
     def eventFilter(self, watched, event):
+        """Keep the overlay aligned when its parent changes size."""
         if event.type() == QEvent.Resize:
             self.setGeometry(watched.rect())
         return super().eventFilter(watched, event)

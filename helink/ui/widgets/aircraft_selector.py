@@ -1,3 +1,5 @@
+"""Multi-select aircraft picker used by fleet analysis."""
+
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
@@ -7,10 +9,13 @@ from PySide6.QtWidgets import (
 
 
 class _AircraftCheckBox(QCheckBox):
+    """Keep the full aircraft row clickable in the multi-select picker."""
     def hitButton(self, position):
+        """Treat a click anywhere on the checkbox row as a selection."""
         return self.rect().contains(position)
 
     def paintEvent(self, event):
+        """Draw a visible check mark over the styled selected checkbox."""
         super().paintEvent(event)
         if not self.isChecked():
             return
@@ -34,6 +39,7 @@ class AircraftSelector(QComboBox):
     selection_changed = Signal(object)
 
     def __init__(self, parent=None):
+        """Build the persistent checkbox menu for aircraft comparisons."""
         super().__init__(parent)
         self.setObjectName('fleetAnalysisFilter')
         self.addItem('Aircraft (0)')
@@ -46,13 +52,16 @@ class AircraftSelector(QComboBox):
         self._menu.aboutToHide.connect(super().hidePopup)
 
     def showPopup(self):
+        """Open the aircraft picker while retaining multi-selection."""
         self._menu.popup(self.mapToGlobal(QPoint(0, self.height())))
 
     def hidePopup(self):
+        """Close the multi-select aircraft picker."""
         self._menu.hide()
         super().hidePopup()
 
     def set_aircraft(self, aircraft, selected_ids, colors):
+        """Populate aircraft choices, selection states, and chart colors."""
         self._menu.clear()
         self.checkboxes = {}
         content = QWidget()
@@ -108,12 +117,14 @@ class AircraftSelector(QComboBox):
         self._update_caption()
 
     def selected_ids(self):
+        """Return identifiers currently checked for comparison."""
         return tuple(
             aircraft_id for aircraft_id, checkbox in self.checkboxes.items()
             if checkbox.isChecked()
         )
 
     def set_selected(self, aircraft_ids):
+        """Update checked aircraft to match the provided identifiers."""
         selected = set(aircraft_ids)
         for aircraft_id, checkbox in self.checkboxes.items():
             blocked = checkbox.blockSignals(True)
@@ -124,10 +135,12 @@ class AircraftSelector(QComboBox):
         self._emit_selection()
 
     def _update_caption(self):
+        """Summarize the selected aircraft in the closed picker."""
         ids = self.selected_ids()
         text = self.checkboxes[ids[0]].text() if len(ids) == 1 else f'Aircraft ({len(ids)})'
         self.setItemText(0, text)
 
     def _emit_selection(self, *_):
+        """Notify listeners after a checkbox selection changes."""
         self._update_caption()
         self.selection_changed.emit(self.selected_ids())

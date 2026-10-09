@@ -9,6 +9,7 @@ from helink.models.flight.flight import Flight
 
 @dataclass(frozen=True, slots=True)
 class ParameterStatistics:
+    """Average, maximum, and valid-sample count for one flight parameter."""
     average: float | None
     maximum: float | None
     samples: int
@@ -16,6 +17,7 @@ class ParameterStatistics:
 
 @dataclass(frozen=True, slots=True)
 class EventSummary:
+    """Count and availability of a relevant flight-event category."""
     count: int
     available: bool
     activated_names: tuple[tuple[str, int], ...] = ()
@@ -53,6 +55,7 @@ def recorded_statistics(records, attributes):
 
 
 def flight_parameter_statistics(flight: Flight):
+    """Calculate finite engine and GPS statistics for the Overview."""
     engine = recorded_statistics(flight.engine_data, (
         'itt', 'eng_ot', 'xmsn_ot', 'oat',
         'eng_op', 'xmsn_op', 'fuel_press',

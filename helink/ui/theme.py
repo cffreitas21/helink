@@ -1,3 +1,5 @@
+"""Application-wide Qt stylesheet."""
+
 STYLE='''
 QWidget{font-family:Segoe UI,Arial;font-size:13px;color:#111827;background:#f1f5f9}
 /* Native Windows date controls need a point size; 9.75pt matches 13px at 96 DPI. */

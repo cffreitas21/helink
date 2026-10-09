@@ -1,3 +1,5 @@
+"""Minute-based flight-duration filter for aircraft trend analysis."""
+
 from PySide6.QtCore import QPoint, Signal
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QComboBox, QGridLayout, QHBoxLayout, QLabel, QMenu, QPushButton,
@@ -12,6 +14,7 @@ class FlightDurationFilter(QComboBox):
     PRESETS = (0, 5, 10, 15, 20, 30)
 
     def __init__(self, parent=None):
+        """Create quick presets and minute-step controls for the threshold."""
         super().__init__(parent)
         self.setObjectName('fleetDurationFilter')
         self.setAccessibleName('Filter by minimum flight duration')
@@ -96,21 +99,26 @@ class FlightDurationFilter(QComboBox):
         self._update_caption()
 
     def showPopup(self):
+        """Open the preset and minute-step duration controls."""
         self._popup_menu.popup(self.mapToGlobal(QPoint(0, self.height())))
 
     def hidePopup(self):
+        """Close the duration-filter popover."""
         self._popup_menu.hide()
         super().hidePopup()
 
     def _choose_preset(self, minutes):
+        """Apply one of the common minimum-flight-duration presets."""
         self.minimum_minutes.setValue(minutes)
         self._popup_menu.hide()
 
     def _value_changed(self, minutes):
+        """Refresh the control after a minute-step change."""
         self._update_caption()
         self.minimum_changed.emit(minutes)
 
     def _update_caption(self):
+        """Display the current minimum duration in the closed filter."""
         minutes = self.minimum_minutes.value()
         self.setItemText(0, 'Flights: All' if minutes == 0 else f'Flights: {minutes}+ min')
         self.setToolTip(

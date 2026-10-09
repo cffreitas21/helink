@@ -1,4 +1,6 @@
-﻿from __future__ import annotations
+﻿"""Loopback server for bundled map assets and generated flight routes."""
+
+from __future__ import annotations
 
 import mimetypes
 import re
@@ -9,25 +11,31 @@ from urllib.parse import unquote, urlsplit
 
 
 class _AssetHandler(BaseHTTPRequestHandler):
+    """Serve only bundled map assets and generated route documents locally."""
     assets: Path
     documents: dict[str, bytes]
     document_lock: threading.Lock
 
     def log_message(self, *_):
+        """Suppress local HTTP access logs from the application console."""
         pass
 
     def end_headers(self):
+        """Allow the embedded map to request local assets and byte ranges."""
         self.send_header('Access-Control-Allow-Origin','*')
         self.send_header('Accept-Ranges','bytes')
         super().end_headers()
 
     def do_HEAD(self):
+        """Respond to a metadata-only asset request."""
         self._serve(send_body=False)
 
     def do_GET(self):
+        """Serve a route document or bundled map asset."""
         self._serve(send_body=True)
 
     def _serve(self,send_body):
+        """Handle GET or HEAD, including byte ranges for large map tiles."""
         name=Path(unquote(urlsplit(self.path).path).lstrip('/')).name
         with self.document_lock:
             document = self.documents.get(name)
@@ -70,7 +78,9 @@ class _AssetHandler(BaseHTTPRequestHandler):
 
 
 class MapAssetServer:
+    """Own a loopback HTTP server used exclusively by the offline map."""
     def __init__(self,assets):
+        """Start a loopback server for the supplied local map directory."""
         assets=Path(assets).resolve()
         self.documents = {}
         self.document_lock = threading.Lock()
@@ -90,6 +100,7 @@ class MapAssetServer:
         return self.base_url + name
 
     def remove_document(self, name: str):
+        """Forget generated route HTML when it is no longer needed."""
         with self.document_lock:
             self.documents.pop(name, None)
 
@@ -98,6 +109,7 @@ _server=None
 _lock=threading.Lock()
 
 def get_map_server(assets):
+    """Return the shared local map server, creating it on first use."""
     global _server
     with _lock:
         if _server is None:_server=MapAssetServer(assets)

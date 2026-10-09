@@ -1,3 +1,5 @@
+"""Wire repositories, services, controllers, and the main window."""
+
 from __future__ import annotations
 
 from pathlib import Path

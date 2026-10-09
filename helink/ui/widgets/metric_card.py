@@ -1,10 +1,14 @@
+"""Headline metric card used in compact dashboard layouts."""
+
 from PySide6.QtWidgets import QLabel
 
 from helink.ui.widgets.card import Card
 
 
 class MetricCard(Card):
+    """Display one compact headline value with supporting text."""
     def __init__(self, label, value, sub=''):
+        """Create a metric card with label, value, and supporting text."""
         super().__init__()
         value_label = QLabel(str(value))
         value_label.setStyleSheet(

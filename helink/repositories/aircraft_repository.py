@@ -1,3 +1,5 @@
+"""SQL persistence and trend aggregation for aircraft records."""
+
 from sys import float_info
 
 from helink.models.aircraft import Aircraft
@@ -54,6 +56,7 @@ f.id IN (
 
 
 def _validate_minimum_duration(minimum_minutes):
+    """Require a non-negative whole-minute threshold for trend queries."""
     if (
         isinstance(minimum_minutes, bool)
         or not isinstance(minimum_minutes, int)
@@ -65,13 +68,19 @@ def _validate_minimum_duration(minimum_minutes):
 
 
 class AircraftRepository:
+    """Read and write aircraft records and fleet-analysis aggregates."""
 
-    def __init__(self,database):self.database=database
+    def __init__(self,database):
+        """Use the connection managed by ``database``."""
+        self.database=database
     @property
 
-    def connection(self):return self.database.connection
+    def connection(self):
+        """Return the database connection owned by the manager."""
+        return self.database.connection
 
     def find_all(self):
+        """List aircraft with their current number of imported flights."""
         sql="""SELECT a.*,(SELECT COUNT(*) FROM flights f WHERE f.aircraft_id=a.id) flight_count FROM aircraft a ORDER BY registration"""
         return [Aircraft.from_record(dict(row)) for row in self.connection.execute(sql)]
 
@@ -204,9 +213,11 @@ class AircraftRepository:
         return [AircraftParameterFlight.from_record(dict(row)) for row in rows]
 
     def add(self,registration,model,serial_number):
+        """Insert an aircraft and return its registration-derived identifier."""
         aircraft_id=registration.lower().replace(' ','-')
         with self.connection:self.connection.execute('INSERT INTO aircraft(id,registration,model,serial_number) VALUES(?,?,?,?)',(aircraft_id,registration.strip(),model.strip(),serial_number.strip()))
         return aircraft_id
 
     def delete(self,aircraft_id):
+        """Delete an aircraft and its dependent flights via foreign-key cascade."""
         with self.connection:self.connection.execute('DELETE FROM aircraft WHERE id=?',(aircraft_id,))

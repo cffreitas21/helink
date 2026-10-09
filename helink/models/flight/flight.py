@@ -1,3 +1,5 @@
+"""Flight entity and conversion from repository records."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,6 +12,7 @@ from helink.models.flight.gps_data import GPSData
 
 @dataclass(frozen=True, slots=True)
 class Flight:
+    """Flight identity, summary fields, and optionally loaded recordings."""
     id: str
     aircraft_id: str
     flight_date: str
@@ -29,6 +32,7 @@ class Flight:
 
     @classmethod
     def from_record(cls, record: dict[str, Any]) -> 'Flight':
+        """Build a flight and any nested sample or alert entities."""
         return cls(
             id=str(record['id']),
             aircraft_id=str(record['aircraft_id']),

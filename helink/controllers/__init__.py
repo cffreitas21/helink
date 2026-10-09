@@ -1,3 +1,5 @@
+"""Application use-case and navigation controllers."""
+
 from helink.controllers.aircraft_controller import AircraftController
 from helink.controllers.database_controller import DatabaseController
 from helink.controllers.flight_controller import FlightController

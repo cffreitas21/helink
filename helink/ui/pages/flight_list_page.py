@@ -1,3 +1,5 @@
+"""Aircraft flight list with date filters and multi-selection."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import QItemSelectionModel, QTimer, Qt, Signal
@@ -22,6 +24,7 @@ from helink.ui.widgets import (
 
 
 class FlightListPage(QWidget):
+    """Show an aircraft's filterable flights and selection controls."""
     flight_selected = Signal(str)
     import_requested = Signal(str)
     back_requested = Signal()
@@ -29,6 +32,7 @@ class FlightListPage(QWidget):
     loading_changed = Signal(bool, str)
 
     def __init__(self, aircraft_controller, flight_controller):
+        """Create filters, selection controls, and the flight table."""
         super().__init__()
         self.aircraft_controller = aircraft_controller
         self.flight_controller = flight_controller
@@ -168,6 +172,7 @@ class FlightListPage(QWidget):
         root.addWidget(self.table)
 
     def load(self, aircraft_id, prepared=None):
+        """Display flights for one aircraft, reusing prefetched data if given."""
         self._query_token += 1
         if self._query_task is not None:
             self._query_task.cancel()
@@ -203,6 +208,7 @@ class FlightListPage(QWidget):
             self.date_filter.set_available_dates(flight.flight_date for flight in rows)
 
     def cancel_pending(self):
+        """Cancel pending list queries and incremental row rendering."""
         self._query_token += 1
         if self._query_task is not None:
             self._query_task.cancel()
@@ -212,6 +218,7 @@ class FlightListPage(QWidget):
         self._render_pending = False
 
     def _reload_rows(self, *_, initialize_dates=False):
+        """Query flights again after dates or sort order change."""
         if self.aid is None:
             return []
         start, end = self.date_filter.date_range
@@ -223,6 +230,7 @@ class FlightListPage(QWidget):
             self.loading_changed.emit(True, 'Loading flights...')
 
             def received(rows):
+                """Apply the latest filtered flight rows to the table."""
                 if token != self._query_token:
                     return
                 if initialize_dates:
@@ -232,6 +240,7 @@ class FlightListPage(QWidget):
                     self.loading_changed.emit(False, '')
 
             def failed(error):
+                """Report an error only for the current flight-list query."""
                 if token == self._query_token:
                     self.loading_changed.emit(False, '')
                     QMessageBox.warning(self, 'Unable to load flights', str(error))
@@ -250,6 +259,7 @@ class FlightListPage(QWidget):
         return rows
 
     def _render_rows(self, rows):
+        """Prepare the table for a fresh set of flight summaries."""
         if rows is self._rendered_rows and not self._render_pending:
             return
         self._render_token += 1
@@ -279,6 +289,7 @@ class FlightListPage(QWidget):
         self._rendered_rows = rows
 
     def _render_rows_in_batches(self, rows):
+        """Populate many flight rows incrementally to keep the UI responsive."""
         token = self._render_token
         self._render_pending = True
         self.row_checkboxes.clear()
@@ -288,6 +299,7 @@ class FlightListPage(QWidget):
         self._sync_selection_ui()
 
         def batch(start=0):
+            """Append the next group of table rows on a later UI cycle."""
             if token != self._render_token:
                 return
             end = min(len(rows), start + 24)
@@ -314,6 +326,7 @@ class FlightListPage(QWidget):
         QTimer.singleShot(0, batch)
 
     def _populate_rows(self, rows, *, start=0, reset=True, finish=True):
+        """Fill flight table cells, route labels, badges, and action widgets."""
         if reset:
             self.row_checkboxes.clear()
             self.table.clearContents()
@@ -471,7 +484,9 @@ class FlightListPage(QWidget):
 
     @staticmethod
     def _route_label(flight):
+        """Format origin and destination ICAO codes for the Route column."""
         def code(value):
+            """Normalize one route endpoint for compact display."""
             normalized = str(value or '').strip().upper()
             return normalized if normalized and normalized != '-' else '\N{EM DASH}'
 
@@ -479,13 +494,16 @@ class FlightListPage(QWidget):
 
     @staticmethod
     def _files_button(files):
+        """Create the per-flight imported-file details control."""
         return ImportedFilesButton(files)
 
     def _sort_order_changed(self):
+        """Reload flights after the user changes chronological order."""
         if self.aid is not None:
             self._reload_rows()
 
     def _toggle_all(self, checked):
+        """Select or clear every currently displayed flight row."""
         self._selection_syncing = True
         try:
             for row, checkbox in enumerate(self.row_checkboxes):
@@ -497,6 +515,7 @@ class FlightListPage(QWidget):
         self._sync_selection_ui()
 
     def _set_row_selected(self, row, checkbox, selected):
+        """Synchronize one row's checkbox and selection highlight."""
         self._set_checkbox_appearance(checkbox, selected)
         self._set_row_visual(row, selected)
         if not self._selection_syncing:
@@ -504,11 +523,13 @@ class FlightListPage(QWidget):
 
     @staticmethod
     def _set_checkbox_appearance(checkbox, selected):
+        """Update the visual state of an individual selection checkbox."""
         checkbox.setAccessibleName(
             'Deselect flight' if selected else 'Select flight'
         )
 
     def _set_row_visual(self, row, selected):
+        """Highlight or reset every cell in the selected table row."""
         action = (
             QItemSelectionModel.Select if selected
             else QItemSelectionModel.Deselect
@@ -528,6 +549,7 @@ class FlightListPage(QWidget):
             widget.update()
 
     def _sync_selection_ui(self):
+        """Refresh the selection count, select-all state, and delete action."""
         selected_count = sum(
             checkbox.isChecked() for checkbox in self.row_checkboxes
         )
@@ -560,6 +582,7 @@ class FlightListPage(QWidget):
         self.delete_btn.setVisible(selected_count > 0)
 
     def selected_ids(self):
+        """Return the identifiers of selected flight rows."""
         return [
             checkbox.property('fid')
             for checkbox in self.row_checkboxes
@@ -567,6 +590,7 @@ class FlightListPage(QWidget):
         ]
 
     def delete_selected(self):
+        """Confirm and delete the currently selected flights."""
         flight_ids = self.selected_ids()
         if not flight_ids:
             return
@@ -591,6 +615,7 @@ This action cannot be undone."""
             self.load(self.aid)
 
     def open_current(self):
+        """Open the flight represented by the current table row."""
         row = self.table.currentRow()
         if row >= 0:
             self.flight_selected.emit(

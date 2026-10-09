@@ -12,6 +12,7 @@ from helink.services.flight_route_service import RouteAvailability, flight_route
 
 @dataclass(frozen=True, slots=True)
 class FlightDetailsData:
+    """Read-only data prepared for all tabs of a flight details page."""
     flight: Flight
     aircraft: Aircraft | None
     statistics: dict[str, ParameterStatistics]
@@ -20,6 +21,7 @@ class FlightDetailsData:
 
 
 def prepare_flight_details(flight, aircraft):
+    """Combine a flight with aircraft, summary, events, and route status."""
     if flight is None:
         raise ValueError('The selected flight is no longer available.')
     return FlightDetailsData(

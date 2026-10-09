@@ -1,3 +1,5 @@
+"""Compact AVG/MAX parameter card for a fleet aircraft row."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
@@ -8,6 +10,7 @@ class FleetParameterCard(QFrame):
     """Readable two-column AVG/MAX telemetry card for fleet summaries."""
 
     def __init__(self, title, average, maximum, unit, parent=None):
+        """Render one aircraft sensor's AVG and MAX with its unit."""
         super().__init__(parent)
         self.setObjectName('fleetParameterCard')
         self.setFixedSize(120, 68)

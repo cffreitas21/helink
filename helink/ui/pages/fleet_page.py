@@ -1,3 +1,5 @@
+"""Fleet cards, ordering controls, and aircraft actions."""
+
 from __future__ import annotations
 
 from math import isfinite
@@ -19,11 +21,13 @@ FLEET_PARAMETER_KEYS = {
 
 
 class FleetPage(QWidget):
+    """Display aircraft cards, fleet parameter summaries, and sorting tools."""
     aircraft_selected = Signal(str)
     analysis_requested = Signal(str)
     add_requested = Signal()
 
     def __init__(self, aircraft_controller):
+        """Build fleet controls and connect aircraft-related actions."""
         super().__init__()
         self.aircraft_controller = aircraft_controller
         self._rendered_data = None
@@ -95,6 +99,7 @@ class FleetPage(QWidget):
         root.addWidget(self.scroll)
 
     def refresh(self, prepared=None):
+        """Reload aircraft and summaries, optionally using prepared results."""
         if prepared is not None and prepared is self._rendered_data:
             return
         if prepared is None:
@@ -108,6 +113,7 @@ class FleetPage(QWidget):
         self._render_list()
 
     def _sort_field_changed(self, *_):
+        """Adjust available sort directions when the chosen metric changes."""
         numeric = self.sort_by.currentData() != 'registration'
         blocked = self.sort_order.blockSignals(True)
         self.sort_order.setItemText(0, 'Lowest first' if numeric else 'A to Z')
@@ -117,6 +123,7 @@ class FleetPage(QWidget):
         self._render_list()
 
     def _ordered_aircraft(self):
+        """Sort aircraft using the current tail-number or parameter criterion."""
         field = self.sort_by.currentData()
         descending = self.sort_order.currentData() == 'descending'
         identity = lambda item: (item.registration.casefold(), item.id)
@@ -144,6 +151,7 @@ class FleetPage(QWidget):
         )
 
     def _render_list(self, *_):
+        """Rebuild the visible fleet cards in the selected order."""
         self._clear_list()
 
         if not self._aircraft:
@@ -157,6 +165,7 @@ class FleetPage(QWidget):
         self.scroll.verticalScrollBar().setValue(0)
 
     def _clear_list(self):
+        """Remove the current fleet cards before a redraw."""
         while self.list.count():
             item = self.list.takeAt(0)
             widget = item.widget()
@@ -165,6 +174,7 @@ class FleetPage(QWidget):
                 widget.deleteLater()
 
     def _add_empty_state(self):
+        """Show guidance when the fleet has no registered aircraft."""
         empty = Card()
         empty.layout.setContentsMargins(28, 32, 28, 32)
         message = QLabel('There are no helicopters in the fleet yet')
@@ -180,6 +190,7 @@ class FleetPage(QWidget):
         self.list.addWidget(empty)
 
     def _aircraft_card(self, aircraft, summary):
+        """Build one aircraft row with identity, metrics, and actions."""
         card = QFrame()
         card.setObjectName('aircraftRow')
         root = QHBoxLayout(card)
@@ -269,6 +280,7 @@ class FleetPage(QWidget):
         root.addWidget(open_button, 0, Qt.AlignVCenter)
         return card
     def choose_aircraft_to_delete(self):
+        """Open the aircraft-selection and deletion confirmation dialog."""
         aircraft = self.aircraft_controller.list_aircraft()
         if not aircraft:
             QMessageBox.information(

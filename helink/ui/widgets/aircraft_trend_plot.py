@@ -1,3 +1,5 @@
+"""Interactive daily aircraft-parameter trend chart."""
+
 from datetime import date
 
 import numpy as np
@@ -17,6 +19,7 @@ class AircraftTrendPlot(FigureCanvasQTAgg):
     CHART_HEIGHT = 380
 
     def __init__(self, parent=None):
+        """Create the matplotlib canvas and connect hover/click events."""
         self.fig = Figure(figsize=(10, 4), layout='constrained', facecolor='white')
         self.ax = self.fig.add_subplot(111)
         super().__init__(self.fig)
@@ -33,6 +36,7 @@ class AircraftTrendPlot(FigureCanvasQTAgg):
         self, days, aircraft, colors, label, unit, statistic='average',
         empty_message=None,
     ):
+        """Plot recorded daily AVG or MAX series for the chosen aircraft."""
         QToolTip.hideText()
         self.ax.clear()
         for legend in list(self.fig.legends):
@@ -107,6 +111,7 @@ class AircraftTrendPlot(FigureCanvasQTAgg):
         self.draw_idle()
 
     def _nearest_point(self, event):
+        """Find the daily plot marker nearest a mouse event in pixels."""
         if event.inaxes is not self.ax or event.x is None or event.y is None:
             return None
         closest = None
@@ -121,6 +126,7 @@ class AircraftTrendPlot(FigureCanvasQTAgg):
         return (closest, best_distance) if closest is not None else None
 
     def day_text(self, day):
+        """Format the tooltip and click annotation for a daily point."""
         registration = self._registrations[day.aircraft_id]
         stamp = date.fromisoformat(day.flight_date).strftime('%d/%m/%Y')
         flights = 'flight' if day.flight_count == 1 else 'flights'
@@ -132,6 +138,7 @@ class AircraftTrendPlot(FigureCanvasQTAgg):
         )
 
     def _on_hover(self, event):
+        """Show a tooltip when the pointer is close to a recorded day."""
         nearest = self._nearest_point(event)
         if nearest is not None and nearest[1] <= 14 ** 2:
             QToolTip.showText(QCursor.pos(), self.day_text(nearest[0][1]), self)
@@ -139,6 +146,7 @@ class AircraftTrendPlot(FigureCanvasQTAgg):
             QToolTip.hideText()
 
     def _on_click(self, event):
+        """Annotate a selected day and emit it for flight details."""
         if event.button != MouseButton.LEFT:
             return
         nearest = self._nearest_point(event)

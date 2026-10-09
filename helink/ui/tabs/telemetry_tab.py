@@ -1,3 +1,5 @@
+"""Telemetry timeline, instantaneous readings, and linked charts."""
+
 from PySide6.QtCore import QEvent, QTimer, Qt, Signal
 from math import isfinite
 from PySide6.QtGui import QColor, QFont
@@ -27,6 +29,7 @@ from helink.ui.widgets import Card, ChartFilterButton, CombinedTelemetryPlot, Te
 
 
 class TelemetryTab(QWidget):
+    """Synchronize telemetry charts, cursor, and instantaneous readings."""
     route_requested = Signal(object)
     CHARTS = TELEMETRY_PARAMETERS
     INSTRUMENT_ROW_COUNTS = (1, 3, 5, 7, 9, 18)
@@ -45,6 +48,7 @@ class TelemetryTab(QWidget):
     )
 
     def __init__(self):
+        """Create timeline controls, readings table, and telemetry plots."""
         super().__init__()
         self.data = []
         self.flight = None
@@ -247,14 +251,17 @@ class TelemetryTab(QWidget):
 
     @staticmethod
     def _instrument_header(label, unit):
+        """Format a two-line instantaneous-table heading and its unit."""
         first, separator, second = label.partition('\n')
         return f'{first}\n{second} ({unit})' if separator else f'{label}\n({unit})'
 
     def _request_route(self):
+        """Request the map position for the selected telemetry sample."""
         if self.data:
             self.route_requested.emit(self.data[self.slider.value()])
 
     def _create_chart(self, parameter):
+        """Create a chart widget configured for one sensor parameter."""
         key, title, unit, color = parameter
         card = Card(title, self.chart_grid.parentWidget())
         plot = TelemetryPlot(2.35)
@@ -288,6 +295,7 @@ class TelemetryTab(QWidget):
         return True
 
     def _set_instrument_rows(self, *_):
+        """Resize the instantaneous table to the selected row count."""
         count = self.row_count_selector.currentData()
         if count not in self.INSTRUMENT_ROW_COUNTS:
             return
@@ -307,6 +315,7 @@ class TelemetryTab(QWidget):
         self._update_instrument_window(self.slider.value())
 
     def _resize_instrument_pane(self):
+        """Fit the instantaneous readings pane around its visible rows."""
         if not self.table_chart_splitter.isVisible():
             self._table_size_pending = True
             return
@@ -326,6 +335,7 @@ class TelemetryTab(QWidget):
         self._table_size_pending = False
 
     def _update_visible_charts(self, selected_keys):
+        """Show only selected parameter charts or the combined view."""
         selected = set(selected_keys)
         for key, card in self.chart_cards.items():
             self.chart_grid.removeWidget(card)
@@ -352,21 +362,25 @@ class TelemetryTab(QWidget):
         self._schedule_render()
 
     def _schedule_render(self, *_):
+        """Coalesce chart redraw requests after layout changes."""
         if not self._render_timer.isActive():
             self._render_timer.start()
 
     def eventFilter(self, watched, event):
+        """Respond to events from watched telemetry controls."""
         if event.type() in (QEvent.Resize, QEvent.Show):
             self._schedule_render()
         return super().eventFilter(watched, event)
 
     def showEvent(self, event):
+        """Refresh chart layout when the tab becomes visible."""
         super().showEvent(event)
         if self._table_size_pending:
             QTimer.singleShot(0, self._resize_instrument_pane)
         self._schedule_render()
 
     def _render_visible_charts(self):
+        """Draw charts that are currently inside the visible viewport."""
         plots = (
             [self.combined_plot] if self._combined_mode
             else [plot for plot, _title, _unit in self.plots.values()]
@@ -379,6 +393,7 @@ class TelemetryTab(QWidget):
                 plot.draw_idle()
 
     def _set_combined_mode(self, enabled):
+        """Switch between individual plots and the combined plot."""
         self._combined_mode = enabled
         self.combine_charts_button.setText(
             'Separate Charts' if enabled else 'Combine Charts'
@@ -390,6 +405,7 @@ class TelemetryTab(QWidget):
         self._update_visible_charts(self.chart_filter.selected_keys())
 
     def _draw_combined_chart(self, *, reset_view=False):
+        """Render selected channels on shared time with separate unit axes."""
         series = []
         for key in self.chart_filter.selected_keys():
             plot, title, unit = self.plots[key]
@@ -402,6 +418,7 @@ class TelemetryTab(QWidget):
         self._reset_combined_view = False
 
     def load(self, flight):
+        """Load recorded channels and reset the telemetry timeline."""
         self._reset_combined_view = True
         self.flight = flight
         self.data = flight.engine_data or flight.data_log
@@ -424,12 +441,14 @@ class TelemetryTab(QWidget):
         self._schedule_render()
 
     def _draw_charts(self):
+        """Update the individual charts for their selected parameters."""
         for key in self.plots:
             self._draw_chart(key)
         if self._combined_mode and self.chart_filter.selected_keys():
             self._draw_combined_chart(reset_view=True)
 
     def _draw_chart(self, key):
+        """Draw one sensor series with its maximum marker."""
         plot, title, unit = self.plots[key]
         values = self._parameter_values(key)
         plot.lines(
@@ -439,6 +458,7 @@ class TelemetryTab(QWidget):
         )
 
     def _parameter_values(self, key):
+        """Align a sensor's values with the active flight timeline."""
         if key not in self._series_cache:
             self._series_cache[key] = (
                 flight_parameter_series(self.flight, key, self.data)
@@ -447,6 +467,7 @@ class TelemetryTab(QWidget):
         return self._series_cache[key]
 
     def _update_instrument_window(self, selected_index):
+        """Fill readings around the selected second, highlighting its row."""
         selected_background = QColor('#dbeafe')
         selected_foreground = QColor('#0f3b72')
         normal_background = QColor('#ffffff')
@@ -493,6 +514,7 @@ class TelemetryTab(QWidget):
         self._ensure_selected_instrument_row_visible()
 
     def _ensure_selected_instrument_row_visible(self, *_):
+        """Keep the highlighted reading visible when table size changes."""
         selected_row = (self.instrument.rowCount() - 1) // 2
         highlighted_item = self.instrument.item(selected_row, 0)
         if (
@@ -506,6 +528,7 @@ class TelemetryTab(QWidget):
             )
 
     def update_cursor(self):
+        """Synchronize chart cursors and readings with the selected second."""
         index = self.slider.value()
         point = self.data[index] if self.data else None
         self.time.setText(

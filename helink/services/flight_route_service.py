@@ -14,6 +14,7 @@ OFFLINE_MAP_ASSETS = (
 
 @dataclass(frozen=True, slots=True)
 class RouteAvailability:
+    """Whether a flight's GPS route can be displayed on the offline map."""
     available: bool
     reason: str
 
@@ -31,6 +32,7 @@ def route_coordinates(record):
 
 
 def _clock_seconds(value):
+    """Extract seconds since midnight from a recorded clock timestamp."""
     matches = re.findall(
         r'(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?', str(value or ''),
     )
@@ -65,11 +67,13 @@ def nearest_route_point_index(flight: Flight, sample):
 
 
 def offline_map_assets_available():
+    """Check that all bundled offline-map assets are present."""
     directory = Path(__file__).resolve().parents[1] / 'assets' / 'map'
     return all((directory / name).is_file() for name in OFFLINE_MAP_ASSETS)
 
 
 def flight_route_availability(flight: Flight):
+    """Explain whether the flight has usable GPS points and map resources."""
     if not flight.data_log:
         return RouteAvailability(
             False, 'No GPS data was imported for this flight.',

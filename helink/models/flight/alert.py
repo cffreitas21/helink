@@ -1,3 +1,5 @@
+"""CAS and exceedance alert entity."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,6 +10,7 @@ from helink.models.flight.alert_trigger import AlertTrigger
 
 @dataclass(frozen=True, slots=True)
 class Alert:
+    """Immutable CAS or exceedance event with its recorded triggers."""
     id: int
     flight_id: str
     kind: str
@@ -24,6 +27,7 @@ class Alert:
 
     @classmethod
     def from_record(cls, record: dict[str, Any]) -> 'Alert':
+        """Build an alert and nested trigger entities from a record."""
         return cls(
             id=int(record['id']),
             flight_id=str(record['flight_id']),

@@ -1,3 +1,5 @@
+"""SQLite schema, connection settings, migrations, and file transfers."""
+
 from __future__ import annotations
 import os, re, shutil, sqlite3, uuid
 from datetime import datetime
@@ -22,10 +24,12 @@ CREATE INDEX IF NOT EXISTS idx_alerts_flight_timestamp ON alerts(flight_id,times
 """
 
 class DatabaseManager:
+    """Own the SQLite connection, schema setup, and database-file transfers."""
 
     REQUIRED_TABLES={'aircraft','flights','engine_data','gps_data','alerts'}
 
     def __init__(self,path):
+        """Open the database and ensure its schema and supported migrations."""
         self.path=Path(path); self.path.parent.mkdir(parents=True,exist_ok=True)
         self.connection=sqlite3.connect(self.path)
         self.connection.row_factory=sqlite3.Row
@@ -34,6 +38,7 @@ class DatabaseManager:
         self.connection.executescript(SCHEMA)
 
     def _configure_connection(self):
+        """Enable foreign keys and performance settings for this connection."""
         self.connection.execute('PRAGMA foreign_keys=ON')
         self.connection.execute('PRAGMA journal_mode=WAL')
         self.connection.execute('PRAGMA synchronous=NORMAL')
@@ -41,6 +46,7 @@ class DatabaseManager:
         self.connection.execute('PRAGMA cache_size=-32768')
 
     def _migrate(self):
+        """Update supported legacy columns and backfill derived flight fields."""
         mappings={'aircraft':{'prefixo':'registration','modelo':'model','msn':'serial_number'},'flights':{'aeronave_id':'aircraft_id','data_voo':'flight_date','hora_partida':'departure_time','hora_chegada':'arrival_time','duracao':'duration','origem':'origin','destino':'destination','ficheiros_importados':'imported_files'}}
         tables={row[0] for row in self.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         with self.connection:
@@ -77,6 +83,7 @@ class DatabaseManager:
                     )
     @staticmethod
     def _clock_time(value):
+        """Extract a valid local clock time from a stored timestamp."""
         matches = re.findall(
             r'(?<!\d)([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?',
             str(value or ''),
@@ -88,11 +95,13 @@ class DatabaseManager:
 
     @classmethod
     def _duration_between(cls, departure_time, arrival_time):
+        """Format rounded flight minutes, allowing a midnight crossing."""
         departure = cls._clock_time(departure_time)
         arrival = cls._clock_time(arrival_time)
         if not departure or not arrival:
             return ''
         def seconds(value):
+            """Convert ``HH:MM:SS`` to seconds since midnight."""
             hour, minute, second = map(int, value.split(':'))
             return hour * 3600 + minute * 60 + second
         difference = seconds(arrival) - seconds(departure)
@@ -105,6 +114,7 @@ class DatabaseManager:
         return f'{hours}h {remaining}m' if remaining else f'{hours}h'
 
     def _backfill_arrival_times(self):
+        """Derive missing arrival times from the last recorded sample."""
         flights = self.connection.execute(
             "SELECT id FROM flights WHERE COALESCE(arrival_time, '') = ''"
         ).fetchall()
@@ -134,6 +144,7 @@ class DatabaseManager:
                     )
 
     def _backfill_durations(self):
+        """Calculate missing duration labels from departure and arrival."""
         flights = self.connection.execute(
             """SELECT id, departure_time, arrival_time FROM flights
                WHERE LOWER(TRIM(COALESCE(duration, ''))) IN
@@ -151,6 +162,11 @@ class DatabaseManager:
                     )
 
     def _backfill_destinations(self):
+        """Infer missing destinations from the last valid GPS coordinate.
+
+        The shared airport lookup accepts a match only within 5 km
+        (approximately 2.7 nautical miles or 3.1 statute miles).
+        """
         from helink.services.airport_lookup import nearest_airport
 
         flights = self.connection.execute(
@@ -183,6 +199,7 @@ class DatabaseManager:
     @classmethod
 
     def validate(cls,path):
+        """Reject a database that fails integrity or required-table checks."""
         resolved=Path(path).resolve(); connection=sqlite3.connect(f'file:{resolved.as_posix()}?mode=ro',uri=True)
         try: integrity=connection.execute('PRAGMA integrity_check').fetchone()[0];tables={row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         finally:connection.close()
@@ -190,6 +207,7 @@ class DatabaseManager:
         if not cls.REQUIRED_TABLES.issubset(tables):raise ValueError('The selected file is not a valid HELINK database.')
 
     def export_to(self,destination):
+        """Create and validate a consistent backup at a different path."""
         destination=Path(destination)
         if destination.resolve()==self.path.resolve():raise ValueError('Select a different destination file.')
         self.connection.commit();target=sqlite3.connect(destination)
@@ -198,6 +216,7 @@ class DatabaseManager:
         self.validate(destination);return destination
 
     def import_from(self,source):
+        """Replace the active database with a validated source file."""
         source=Path(source)
         if source.resolve()==self.path.resolve():raise ValueError('This database is already open.')
         self.validate(source);backup=self.path.with_name(f'helink-before-import-{datetime.now():%Y%m%d-%H%M%S}.db');temporary=self.path.with_name(f'.helink-import-{uuid.uuid4().hex}.db');replaced=False
@@ -218,8 +237,11 @@ class DatabaseManager:
             raise
 
     def reopen(self):
+        """Re-establish the connection after database-file replacement."""
         self.connection = sqlite3.connect(self.path)
         self.connection.row_factory = sqlite3.Row
         self._configure_connection()
 
-    def close(self):self.connection.close()
+    def close(self):
+        """Close the active SQLite connection."""
+        self.connection.close()

@@ -1,3 +1,5 @@
+"""Imported-file category list, tooltip, and click popover."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, Qt
@@ -34,12 +36,14 @@ FILE_TYPE_LABELS = {
 
 
 def _ordered_file_types(imported):
+    """Order imported categories consistently with the supported file list."""
     ordered = list(EXPECTED_FILE_TYPES)
     ordered.extend(sorted(imported.difference(EXPECTED_FILE_TYPES)))
     return ordered
 
 
 def _file_row(file_type, loaded, *, show_status=True):
+    """Build one imported-file category row with optional status."""
     row = QFrame()
     row.setObjectName(
         'importedFileLoaded' if loaded else 'importedFileMissing'
@@ -90,6 +94,7 @@ class ImportedFilesList(QScrollArea):
     """Reusable imported/missing file coverage list."""
 
     def __init__(self, files=(), parent=None, *, show_status=True):
+        """Create a scrollable list of file categories and statuses."""
         super().__init__(parent)
         self.show_status = show_status
         self.setObjectName('importedFilesScroll')
@@ -99,6 +104,7 @@ class ImportedFilesList(QScrollArea):
         self.set_files(files)
 
     def set_files(self, files):
+        """Refresh the list of imported and missing file categories."""
         imported = set(files or ())
         content = QWidget()
         content.setObjectName('importedFilesContent')
@@ -123,6 +129,7 @@ class ImportedFilesPopover(QFrame):
     """Click popover showing imported and missing flight file types."""
 
     def __init__(self, files, parent=None):
+        """Build the floating imported-files detail panel."""
         super().__init__(parent, Qt.Popup | Qt.FramelessWindowHint)
         self.setObjectName('importedFilesPopover')
         self.setAttribute(Qt.WA_DeleteOnClose, False)
@@ -159,6 +166,7 @@ class ImportedFilesPopover(QFrame):
         root.addWidget(file_list)
 
     def show_below(self, anchor):
+        """Position the file-details popover under its button."""
         self.adjustSize()
         position = anchor.mapToGlobal(QPoint(0, anchor.height() + 6))
         screen = QGuiApplication.screenAt(position)
@@ -182,6 +190,7 @@ class ImportedFilesButton(QToolButton):
     """Compact file count with a preview tooltip and detailed click popover."""
 
     def __init__(self, files, parent=None):
+        """Create the file-count button and its tooltip and popover."""
         super().__init__(parent)
         self.files = tuple(dict.fromkeys(files or ()))
         self.setObjectName('fileList')
@@ -197,6 +206,7 @@ class ImportedFilesButton(QToolButton):
         self.clicked.connect(self._toggle_popover)
 
     def _tooltip_text(self):
+        """Summarize imported file categories for the hover tooltip."""
         if not self.files:
             return '<b>No files imported</b><br>Click to view file coverage'
         preview = [FILE_TYPE_LABELS.get(name, name) for name in self.files[:3]]
@@ -211,6 +221,7 @@ class ImportedFilesButton(QToolButton):
         )
 
     def _toggle_popover(self):
+        """Open or close the detailed imported-files popover."""
         if self._popover is None:
             self._popover = ImportedFilesPopover(self.files, self)
         if self._popover.isVisible():
