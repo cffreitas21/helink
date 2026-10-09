@@ -6,9 +6,10 @@ from datetime import date
 
 from helink.repositories import FlightRepository
 from helink.repositories.aircraft_repository import AircraftRepository
+from helink.parameters.aw119_limits import LIMITS
 from helink.services.flight_details_service import prepare_flight_details
 from helink.services.preventive_maintenance_service import (
-    LIMITS, assess_preventive_maintenance, aw119_limits_apply,
+    assess_preventive_maintenance, aw119_limits_apply,
     screen_upper_limit_rows,
 )
 

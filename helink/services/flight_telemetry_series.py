@@ -3,8 +3,9 @@
 import re
 from math import isfinite
 
+from helink.parameters import GPS_PARAMETERS as GPS_DEFINITIONS
 
-GPS_PARAMETERS = frozenset(('ias', 'alt_ind'))
+GPS_PARAMETER_KEYS = frozenset(item.key for item in GPS_DEFINITIONS)
 
 
 def _clock_key(timestamp):
@@ -30,7 +31,7 @@ def _recorded_value(record, key):
 
 def flight_parameter_series(flight, key, timeline):
     """Match actual recorded seconds; do not interpolate or invent missing data."""
-    records = flight.data_log if key in GPS_PARAMETERS else flight.engine_data
+    records = flight.data_log if key in GPS_PARAMETER_KEYS else flight.engine_data
     if timeline is records:
         return [_recorded_value(record, key) for record in records]
     by_time = {}

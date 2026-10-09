@@ -94,6 +94,10 @@ class AircraftController:
         """Create an aircraft with its registration and identity details."""
         return self.repository.add(registration, model, serial_number)
 
+    def update(self, aircraft_id, registration, model, serial_number):
+        """Change an aircraft's identity without changing its flight links."""
+        self.repository.update(aircraft_id, registration, model, serial_number)
+
     def delete(self, aircraft_id):
         """Delete the selected aircraft through the repository."""
         self.repository.delete(aircraft_id)

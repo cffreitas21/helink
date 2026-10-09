@@ -10,9 +10,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from helink.services.preventive_maintenance_service import (
-    LIMITS, assess_preventive_maintenance,
-)
+from helink.parameters.aw119_limits import LIMITS
+from helink.services.preventive_maintenance_service import assess_preventive_maintenance
 from helink.ui.widgets import Card
 
 

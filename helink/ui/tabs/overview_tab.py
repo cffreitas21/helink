@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QToolButton, QVBoxLayout, QWidget,
 )
 
+from helink.parameters import PARAMETERS_BY_KEY
 from helink.services.airport_lookup import format_airport
 from helink.services.flight_overview_summary import (
     flight_parameter_statistics, important_flight_events,
@@ -17,26 +18,18 @@ from helink.ui.widgets import (
 from helink.ui.widgets.imported_files_button import EXPECTED_FILE_TYPES
 
 
-PARAMETER_GROUPS = (
-    ('Temperatures', (
-        ('itt', 'ITT', '\u00b0C', 1),
-        ('eng_ot', 'ENG OIL TEMP', '\u00b0C', 1),
-        ('xmsn_ot', 'XMSN OIL TEMP', '\u00b0C', 1),
-        ('oat', 'OAT', '\u00b0C', 1),
-    )),
-    ('Pressures', (
-        ('eng_op', 'ENG OIL PRESS', 'psi', 1),
-        ('xmsn_op', 'XMSN OIL PRESS', 'psi', 1),
-        ('fuel_press', 'FUEL PRESS', 'psi', 1),
-    )),
-    ('Engine & Flight', (
-        ('n1', 'N1', '%', 1),
-        ('n2', 'N2', '%', 1),
-        ('nr', 'NR', '%', 1),
-        ('tq', 'TORQUE', '%', 1),
-        ('ias', 'IAS', 'kt', 1),
-        ('alt_ind', 'ALTITUDE', 'ft', 0),
-    )),
+_PARAMETER_GROUP_KEYS = (
+    ('Temperatures', ('itt', 'eng_ot', 'xmsn_ot', 'oat')),
+    ('Pressures', ('eng_op', 'xmsn_op', 'fuel_press')),
+    ('Engine & Flight', ('n1', 'n2', 'nr', 'tq', 'ias', 'alt_ind')),
+)
+PARAMETER_GROUPS = tuple(
+    (title, tuple(
+        (key, PARAMETERS_BY_KEY[key].label, PARAMETERS_BY_KEY[key].unit,
+         0 if key == 'alt_ind' else 1)
+        for key in keys
+    ))
+    for title, keys in _PARAMETER_GROUP_KEYS
 )
 
 
@@ -255,6 +248,7 @@ class OverviewTab(QWidget):
                     if summary.samples else 'No recorded values for this parameter.'
                 )
                 self.metric_tiles[key].setToolTip(tooltip)
+                self.metric_tiles[key].setEnabled(summary.samples > 0)
                 for name, number in (
                     ('avg', summary.average), ('max', summary.maximum),
                 ):

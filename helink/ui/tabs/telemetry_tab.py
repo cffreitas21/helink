@@ -22,7 +22,8 @@ from PySide6.QtWidgets import (
 
 from helink.services.flight_telemetry_series import flight_parameter_series
 from helink.services.flight_route_service import flight_route_availability
-from helink.ui.telemetry_parameters import (
+from helink.parameters import PARAMETERS_BY_KEY
+from helink.ui.chart_config import (
     OVERVIEW_TELEMETRY_PARAMETERS, TELEMETRY_PARAMETERS,
 )
 from helink.ui.widgets import Card, ChartFilterButton, CombinedTelemetryPlot, TelemetryPlot
@@ -33,18 +34,16 @@ class TelemetryTab(QWidget):
     route_requested = Signal(object)
     CHARTS = TELEMETRY_PARAMETERS
     INSTRUMENT_ROW_COUNTS = (1, 3, 5, 7, 9, 18)
-    INSTRUMENTS = (
-        ('n1', 'N1', '%'),
-        ('n2', 'N2', '%'),
-        ('nr', 'NR', '%'),
-        ('itt', 'ITT', '\N{DEGREE SIGN}C'),
-        ('eng_ot', 'ENG OIL\nTEMP', '\N{DEGREE SIGN}C'),
-        ('eng_op', 'ENG OIL\nPRESS', 'psi'),
-        ('xmsn_ot', 'XMSN OIL\nTEMP', '\N{DEGREE SIGN}C'),
-        ('xmsn_op', 'XMSN OIL\nPRESS', 'psi'),
-        ('fuel_press', 'FUEL PRESS', 'psi'),
-        ('oat', 'OAT', '\N{DEGREE SIGN}C'),
-        ('ias', 'IAS', 'kt'),
+    INSTRUMENTS = tuple(
+        (
+            key,
+            PARAMETERS_BY_KEY[key].label.replace(' OIL ', ' OIL\n'),
+            PARAMETERS_BY_KEY[key].unit,
+        )
+        for key in (
+            'n1', 'n2', 'nr', 'itt', 'eng_ot', 'eng_op',
+            'xmsn_ot', 'xmsn_op', 'fuel_press', 'oat', 'ias',
+        )
     )
 
     def __init__(self):

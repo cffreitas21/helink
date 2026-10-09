@@ -5,14 +5,12 @@ from sys import float_info
 from helink.models.aircraft import Aircraft
 from helink.models.aircraft_parameter_day import AircraftParameterDay
 from helink.models.aircraft_parameter_flight import AircraftParameterFlight
+from helink.parameters import PARAMETERS
 
 
+_SOURCE_TABLES = {'engine': 'engine_data', 'gps': 'gps_data'}
 TREND_PARAMETER_TABLES = {
-    **dict.fromkeys((
-        'oat', 'n1', 'n2', 'nr', 'itt', 'tq', 'eng_ot', 'eng_op',
-        'xmsn_ot', 'xmsn_op', 'fuel_press',
-    ), 'engine_data'),
-    **dict.fromkeys(('ias', 'alt_ind'), 'gps_data'),
+    item.key: _SOURCE_TABLES[item.source] for item in PARAMETERS
 }
 
 # The displayed flight duration is already rounded to whole minutes. Use that
@@ -213,10 +211,57 @@ class AircraftRepository:
         return [AircraftParameterFlight.from_record(dict(row)) for row in rows]
 
     def add(self,registration,model,serial_number):
-        """Insert an aircraft and return its registration-derived identifier."""
-        aircraft_id=registration.lower().replace(' ','-')
-        with self.connection:self.connection.execute('INSERT INTO aircraft(id,registration,model,serial_number) VALUES(?,?,?,?)',(aircraft_id,registration.strip(),model.strip(),serial_number.strip()))
+        """Insert an aircraft with a unique internal identifier."""
+        registration = registration.strip()
+        if not registration:
+            raise ValueError('Enter an aircraft tail number.')
+        base_id = registration.lower().replace(' ', '-')
+        aircraft_id = base_id
+        with self.connection:
+            duplicate = self.connection.execute(
+                'SELECT 1 FROM aircraft WHERE registration = ? COLLATE NOCASE',
+                (registration,),
+            ).fetchone()
+            if duplicate:
+                raise ValueError('Another aircraft already has this tail number.')
+            suffix = 2
+            while self.connection.execute(
+                'SELECT 1 FROM aircraft WHERE id = ?', (aircraft_id,),
+            ).fetchone():
+                aircraft_id = f'{base_id}-{suffix}'
+                suffix += 1
+            self.connection.execute(
+                'INSERT INTO aircraft(id, registration, model, serial_number) '
+                'VALUES (?, ?, ?, ?)',
+                (
+                    aircraft_id, registration, model.strip(),
+                    serial_number.strip() or 'Unknown',
+                ),
+            )
         return aircraft_id
+
+    def update(self, aircraft_id, registration, model, serial_number):
+        """Update identity fields while preserving the aircraft's stable ID."""
+        registration = registration.strip()
+        model = model.strip()
+        serial_number = serial_number.strip() or 'Unknown'
+        if not registration or not model:
+            raise ValueError('Tail number and Model required.')
+        with self.connection:
+            duplicate = self.connection.execute(
+                'SELECT 1 FROM aircraft WHERE registration = ? COLLATE NOCASE '
+                'AND id <> ?',
+                (registration, aircraft_id),
+            ).fetchone()
+            if duplicate:
+                raise ValueError('Another aircraft already has this tail number.')
+            result = self.connection.execute(
+                'UPDATE aircraft SET registration = ?, model = ?, '
+                'serial_number = ? WHERE id = ?',
+                (registration, model, serial_number, aircraft_id),
+            )
+            if result.rowcount != 1:
+                raise ValueError('The selected aircraft no longer exists.')
 
     def delete(self,aircraft_id):
         """Delete an aircraft and its dependent flights via foreign-key cascade."""

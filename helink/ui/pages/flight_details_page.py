@@ -10,7 +10,11 @@ from PySide6.QtWidgets import (
 )
 
 from helink.ui.dialogs import PdfPreviewDialog
+from helink.parameters.aw119_limits import LIMITS
 from helink.services.flight_route_service import nearest_route_point_index
+from helink.services.flight_route_service import flight_route_availability
+from helink.services.flight_overview_summary import flight_parameter_statistics
+from helink.services.preventive_maintenance_service import aw119_limits_apply
 from helink.services.flight_report_builder import flight_report_html
 from helink.ui.tabs import (
     EventsTab, FlightRouteTab, OverviewTab, PreventiveMaintenanceTab,
@@ -32,6 +36,8 @@ class FlightDetailsPage(QWidget):
         self.tasks = None
         self._loaded_tabs = set()
         self._route_follows_telemetry = False
+        self._tab_statistics = None
+        self._tab_route = None
         h=QHBoxLayout(); b=QPushButton('← Flight List'); b.setObjectName('secondary'); b.clicked.connect(self.back_requested); h.addWidget(b); self.title=QLabel(); self.title.setObjectName('title'); h.addWidget(self.title); h.addStretch(); root.addLayout(h)
         self.info = QLabel()
         self.info.setObjectName('muted')
@@ -103,6 +109,15 @@ class FlightDetailsPage(QWidget):
         # Rendering can be reused only while the database snapshot is unchanged.
         self._loaded_tabs.clear()
         self._route_follows_telemetry = False
+        self._tab_statistics = (
+            prepared.statistics if prepared is not None
+            else flight_parameter_statistics(f)
+        )
+        self._tab_route = (
+            prepared.route if prepared is not None
+            else flight_route_availability(f)
+        )
+        self._update_tab_visibility(switching_flight)
         registration=aircraft.registration if aircraft else f.aircraft_id
         departure = f.departure_time or '\N{EM DASH}'
         arrival = f.arrival_time or '\N{EM DASH}'
@@ -121,6 +136,35 @@ class FlightDetailsPage(QWidget):
             self.tabs.setCurrentWidget(self.overview)
         else:
             self._ensure_tab_loaded(self.tabs.currentWidget())
+
+    def _update_tab_visibility(self, switching_flight):
+        """Show only tabs with usable data for the currently loaded flight."""
+        flight = self._flight
+        statistics = self._tab_statistics
+        model = self._aircraft.model if self._aircraft is not None else ''
+        maintenance_data = aw119_limits_apply(model) and any(
+            statistics[spec.key].samples for spec in LIMITS
+        )
+        available = {
+            self.overview: True,
+            self.telemetry: any(item.samples for item in statistics.values()),
+            self.preventive: maintenance_data,
+            self.cas: any(alert.kind == 'CAS' for alert in flight.alerts),
+            self.exceed: any(
+                alert.kind == 'EXCEEDANCE' for alert in flight.alerts
+            ),
+            self.route: self._tab_route.available,
+            self.report_tab: True,
+        }
+        selected = self.tabs.currentWidget()
+        was_blocked = self.tabs.blockSignals(True)
+        try:
+            for tab, visible in available.items():
+                self.tabs.setTabVisible(self.tabs.indexOf(tab), visible)
+            if switching_flight or not available.get(selected, False):
+                self.tabs.setCurrentWidget(self.overview)
+        finally:
+            self.tabs.blockSignals(was_blocked)
 
     def cancel_pending(self):
         """Cancel work associated with the previously displayed flight."""
@@ -143,10 +187,11 @@ class FlightDetailsPage(QWidget):
             tab.tasks = self.tasks
         if tab is self.report_tab:
             self._render_report()
-        elif tab is self.overview and self._prepared is not None:
+        elif tab is self.overview:
             tab.load(
-                self._flight, statistics=self._prepared.statistics,
-                events=self._prepared.events, route=self._prepared.route,
+                self._flight, statistics=self._tab_statistics,
+                events=self._prepared.events if self._prepared is not None else None,
+                route=self._tab_route,
             )
         elif tab is self.preventive:
             tab.load(self._flight, self._aircraft)
@@ -162,6 +207,8 @@ class FlightDetailsPage(QWidget):
 
     def open_parameter_chart(self, parameter_key):
         """Open Telemetry with the selected parameter in focus."""
+        if not self.tabs.isTabVisible(self.tabs.indexOf(self.telemetry)):
+            return
         self._ensure_tab_loaded(self.telemetry)
         if self.telemetry.focus_parameter(parameter_key):
             self.tabs.setCurrentWidget(self.telemetry)

@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Callable, Iterable
 
 from helink.models.flight import EngineData, Flight
+from helink.parameters.aw119_limits import LIMITS
 
 
 WriteProgress = Callable[[int, int, str], None]
@@ -17,7 +18,7 @@ class FlightRepository:
     """Persists flights and telemetry using atomic batch operations."""
 
     BATCH_SIZE = 5_000
-    LIMIT_COLUMNS = frozenset({'n1', 'n2', 'nr', 'itt', 'eng_ot', 'tq'})
+    LIMIT_COLUMNS = frozenset(spec.key for spec in LIMITS)
 
     def __init__(self, database):
         """Use the connection managed by ``database`` for flight queries."""

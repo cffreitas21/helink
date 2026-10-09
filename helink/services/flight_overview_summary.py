@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from math import isfinite
 
 from helink.models.flight.flight import Flight
+from helink.parameters import ENGINE_PARAMETERS, GPS_PARAMETERS
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,12 +57,12 @@ def recorded_statistics(records, attributes):
 
 def flight_parameter_statistics(flight: Flight):
     """Calculate finite engine and GPS statistics for the Overview."""
-    engine = recorded_statistics(flight.engine_data, (
-        'itt', 'eng_ot', 'xmsn_ot', 'oat',
-        'eng_op', 'xmsn_op', 'fuel_press',
-        'n1', 'n2', 'nr', 'tq',
-    ))
-    gps = recorded_statistics(flight.data_log, ('ias', 'alt_ind'))
+    engine = recorded_statistics(
+        flight.engine_data, tuple(item.key for item in ENGINE_PARAMETERS),
+    )
+    gps = recorded_statistics(
+        flight.data_log, tuple(item.key for item in GPS_PARAMETERS),
+    )
     return {**engine, **gps}
 
 

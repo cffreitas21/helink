@@ -10,8 +10,8 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QToolButton, QVBoxLayout, QWidget,
 )
 
-from helink.ui.dialogs import DeleteAircraftDialog
-from helink.ui.telemetry_parameters import TELEMETRY_PARAMETERS
+from helink.ui.dialogs import DeleteAircraftDialog, EditAircraftDialog
+from helink.ui.chart_config import TELEMETRY_PARAMETERS
 from helink.ui.widgets import Card, FleetParameterCard
 
 
@@ -54,6 +54,10 @@ class FleetPage(QWidget):
         add_button = QPushButton('\N{FULLWIDTH PLUS SIGN} Add Aircraft')
         add_button.clicked.connect(self.add_requested)
         right_actions.addWidget(add_button)
+        edit_button = QPushButton('Edit Aircraft')
+        edit_button.setObjectName('secondary')
+        edit_button.clicked.connect(self.choose_aircraft_to_edit)
+        right_actions.addWidget(edit_button)
         delete_button = QPushButton('Delete Aircraft')
         delete_button.setObjectName('danger')
         delete_button.clicked.connect(self.choose_aircraft_to_delete)
@@ -279,6 +283,34 @@ class FleetPage(QWidget):
         )
         root.addWidget(open_button, 0, Qt.AlignVCenter)
         return card
+
+    def choose_aircraft_to_edit(self):
+        """Select an aircraft, save its updated fields, and refresh the fleet."""
+        aircraft = self.aircraft_controller.list_aircraft()
+        if not aircraft:
+            QMessageBox.information(
+                self, 'No aircraft', 'There are no aircraft to edit.',
+            )
+            return
+
+        dialog = EditAircraftDialog(aircraft, self)
+        while dialog.exec() == QDialog.Accepted:
+            try:
+                self.aircraft_controller.update(
+                    dialog.selected_aircraft.id,
+                    dialog.registration.text(),
+                    dialog.model.text(),
+                    dialog.serial_number.text().strip() or 'Unknown',
+                )
+            except Exception as error:
+                QMessageBox.warning(self, 'Unable to update aircraft', str(error))
+                continue
+            # Identity changed, but the saved telemetry aggregates did not.
+            self.refresh(prepared=(
+                self.aircraft_controller.list_aircraft(), self._summaries,
+            ))
+            return
+
     def choose_aircraft_to_delete(self):
         """Open the aircraft-selection and deletion confirmation dialog."""
         aircraft = self.aircraft_controller.list_aircraft()

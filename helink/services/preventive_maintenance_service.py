@@ -8,28 +8,7 @@ from dataclasses import dataclass
 from math import isfinite
 import re
 
-
-@dataclass(frozen=True, slots=True)
-class LimitSpec:
-    """Configured continuous and transient upper limits for one channel."""
-    key: str
-    label: str
-    unit: str
-    continuous_max: float
-    transient_max: float | None = None
-    transient_seconds: int | None = None
-
-
-# AW119MKII G1000H NXi QRH, Limitations, Issue 1, pages 19-20.
-# ENG OIL TEMP uses the separately supplied 115 C maximum, without a transient.
-LIMITS = (
-    LimitSpec('n1', 'N1', '%', 100.1, 103.8, 30),
-    LimitSpec('n2', 'N2', '%', 103, 108, 10),
-    LimitSpec('nr', 'NR', '%', 103, 108, 10),
-    LimitSpec('itt', 'ITT', '\N{DEGREE SIGN}C', 755, 860, 5),
-    LimitSpec('eng_ot', 'ENG OIL TEMP', '\N{DEGREE SIGN}C', 115),
-    LimitSpec('tq', 'TORQUE', '%', 100, 115, 6),
-)
+from helink.parameters.aw119_limits import LIMITS, LimitSpec
 
 MAX_CONTIGUOUS_GAP_SECONDS = 2
 

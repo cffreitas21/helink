@@ -7,6 +7,7 @@ from html import escape
 
 from helink.models.aircraft import Aircraft
 from helink.models.flight import AlertTrigger, Flight
+from helink.parameters import PARAMETERS_BY_KEY
 from helink.services.airport_lookup import format_airport
 from helink.services.flight_overview_summary import flight_parameter_statistics
 from helink.services.flight_route_service import flight_route_availability
@@ -15,15 +16,13 @@ from helink.services.preventive_maintenance_service import (
 )
 
 
-PARAMETERS = (
-    ('n1', 'N1', '%'), ('n2', 'N2', '%'), ('nr', 'NR', '%'),
-    ('itt', 'ITT', '°C'), ('eng_ot', 'ENG OIL TEMP', '°C'),
-    ('eng_op', 'ENG OIL PRESS', 'psi'),
-    ('xmsn_ot', 'XMSN OIL TEMP', '°C'),
-    ('xmsn_op', 'XMSN OIL PRESS', 'psi'),
-    ('fuel_press', 'FUEL PRESS', 'psi'), ('tq', 'TORQUE', '%'),
-    ('oat', 'OAT', '°C'), ('ias', 'IAS', 'kt'),
-    ('alt_ind', 'ALTITUDE', 'ft'),
+_REPORT_PARAMETER_KEYS = (
+    'n1', 'n2', 'nr', 'itt', 'eng_ot', 'eng_op', 'xmsn_ot',
+    'xmsn_op', 'fuel_press', 'tq', 'oat', 'ias', 'alt_ind',
+)
+PARAMETERS = tuple(
+    (key, PARAMETERS_BY_KEY[key].label, PARAMETERS_BY_KEY[key].unit)
+    for key in _REPORT_PARAMETER_KEYS
 )
 
 

@@ -43,6 +43,7 @@ helink/
 |   |-- bootstrap.py            Dependency construction and injection
 |   |-- controllers/            Application use-case controllers
 |   |-- models/                 Domain entities
+|   |-- parameters/             Shared engine/GPS definitions and AW119 limits
 |   |-- repositories/           SQLite persistence operations
 |   |-- services/               Import, analysis, route and report logic
 |   |-- ui/                     Windows, pages, tabs, dialogs and widgets
