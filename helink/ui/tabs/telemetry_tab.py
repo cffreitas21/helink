@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSlider,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -53,6 +54,7 @@ class TelemetryTab(QWidget):
         self._reset_combined_view = True
         self._series_cache = {}
         self._time_labels = []
+        self._table_size_pending = True
         self._render_timer = QTimer(self)
         self._render_timer.setSingleShot(True)
         self._render_timer.setInterval(0)
@@ -150,9 +152,11 @@ class TelemetryTab(QWidget):
         for column in range(1, len(self.INSTRUMENTS) + 1):
             header.setSectionResizeMode(column, QHeaderView.Stretch)
         self.instrument.verticalHeader().setDefaultSectionSize(32)
-        root.addWidget(self.instrument)
-        self.row_count_selector.currentIndexChanged.connect(self._set_instrument_rows)
-        self._set_instrument_rows()
+        self.instrument.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.instrument.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.instrument.setMinimumHeight(
+            header.height() + 32 + self.instrument.frameWidth() * 2
+        )
 
         scroll = QScrollArea()
         self.chart_scroll = scroll
@@ -212,7 +216,24 @@ class TelemetryTab(QWidget):
         self.combine_charts_button.toggled.connect(self._set_combined_mode)
         self._update_visible_charts(self.chart_filter.selected_keys())
         scroll.setWidget(charts)
-        root.addWidget(scroll, 1)
+        scroll.setMinimumHeight(180)
+        self.table_chart_splitter = QSplitter(Qt.Vertical, self)
+        self.table_chart_splitter.setObjectName('telemetrySplitter')
+        self.table_chart_splitter.setChildrenCollapsible(False)
+        self.table_chart_splitter.setHandleWidth(11)
+        self.table_chart_splitter.addWidget(self.instrument)
+        self.table_chart_splitter.addWidget(scroll)
+        self.table_chart_splitter.setStretchFactor(0, 0)
+        self.table_chart_splitter.setStretchFactor(1, 1)
+        self.table_chart_splitter.handle(1).setToolTip(
+            'Drag up or down to resize the telemetry table'
+        )
+        self.table_chart_splitter.splitterMoved.connect(
+            self._ensure_selected_instrument_row_visible
+        )
+        root.addWidget(self.table_chart_splitter, 1)
+        self.row_count_selector.currentIndexChanged.connect(self._set_instrument_rows)
+        self._set_instrument_rows()
 
         self.slider.valueChanged.connect(self.update_cursor)
         self.prev.clicked.connect(
@@ -278,11 +299,31 @@ class TelemetryTab(QWidget):
                     item = QTableWidgetItem('\N{EM DASH}')
                     item.setTextAlignment(Qt.AlignCenter)
                     self.instrument.setItem(row, column, item)
-        self.instrument.setFixedHeight(
+        self._preferred_table_height = (
             self.instrument.horizontalHeader().height()
             + count * 32 + self.instrument.frameWidth() * 2
         )
+        self._resize_instrument_pane()
         self._update_instrument_window(self.slider.value())
+
+    def _resize_instrument_pane(self):
+        if not self.table_chart_splitter.isVisible():
+            self._table_size_pending = True
+            return
+        available = (
+            self.table_chart_splitter.height()
+            - self.table_chart_splitter.handleWidth()
+        )
+        minimum_table = self.instrument.minimumHeight()
+        minimum_charts = self.chart_scroll.minimumHeight()
+        table_height = min(
+            self._preferred_table_height,
+            max(minimum_table, available - minimum_charts),
+        )
+        self.table_chart_splitter.setSizes([
+            table_height, max(minimum_charts, available - table_height),
+        ])
+        self._table_size_pending = False
 
     def _update_visible_charts(self, selected_keys):
         selected = set(selected_keys)
@@ -321,6 +362,8 @@ class TelemetryTab(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        if self._table_size_pending:
+            QTimer.singleShot(0, self._resize_instrument_pane)
         self._schedule_render()
 
     def _render_visible_charts(self):
@@ -447,6 +490,20 @@ class TelemetryTab(QWidget):
                 font = QFont(item.font())
                 font.setBold(highlighted)
                 item.setFont(font)
+        self._ensure_selected_instrument_row_visible()
+
+    def _ensure_selected_instrument_row_visible(self, *_):
+        selected_row = (self.instrument.rowCount() - 1) // 2
+        highlighted_item = self.instrument.item(selected_row, 0)
+        if (
+            highlighted_item is not None
+            and not self.instrument.viewport().rect().intersects(
+                self.instrument.visualItemRect(highlighted_item)
+            )
+        ):
+            self.instrument.scrollToItem(
+                highlighted_item, QAbstractItemView.EnsureVisible
+            )
 
     def update_cursor(self):
         index = self.slider.value()

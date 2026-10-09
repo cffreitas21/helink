@@ -281,7 +281,7 @@ class FlightDetailsPage(QWidget):
 
         def received(result):
             progress.close()
-            path, _text = result
+            path = result
             if getattr(self.window(), '_closing', False) or self.fid != flight_id:
                 cleanup()
                 return

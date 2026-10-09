@@ -4,10 +4,7 @@ from PySide6.QtCore import QMarginsF
 from PySide6.QtGui import QPageLayout, QPageSize, QTextDocument
 from PySide6.QtPrintSupport import QPrinter
 
-from helink.services.flight_report_builder import (
-    flight_report_text,
-    flight_report_html,
-)
+from helink.services.flight_report_builder import flight_report_html
 
 
 class ReportService:
@@ -26,9 +23,6 @@ class ReportService:
         if destination.suffix.lower() != '.pdf':
             destination = destination.with_suffix('.pdf')
         flight, aircraft = self._records(flight_id)
-        report = flight_report_text(flight, aircraft)
-        self.flights.save_report(flight_id, report)
-
         printer = QPrinter(QPrinter.HighResolution)
         printer.setOutputFormat(QPrinter.PdfFormat)
         printer.setOutputFileName(str(destination))

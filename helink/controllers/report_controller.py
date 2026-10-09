@@ -15,11 +15,10 @@ class ReportController:
     def request_export(self, flight_id, destination, on_result, on_error):
         def export(database, _progress):
             repository = FlightRepository(database)
-            path = ReportService(
+            return ReportService(
                 repository, AircraftRepository(database),
             ).export_pdf(flight_id, destination)
-            return path, repository.find_metadata_by_id(flight_id).predictive_report
-        return self.tasks.write(
+        return self.tasks.query(
             export,
             on_result, on_error,
         )

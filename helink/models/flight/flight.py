@@ -22,7 +22,6 @@ class Flight:
     exceedance_count: int = 0
     miscmp_count: int = 0
     preventive_status: str = 'unavailable'
-    predictive_report: str = ''
     created_at: str | None = None
     engine_data: tuple[EngineData, ...] = field(default_factory=tuple)
     data_log: tuple[GPSData, ...] = field(default_factory=tuple)
@@ -43,7 +42,6 @@ class Flight:
             exceedance_count=int(record.get('exceedance_count') or 0),
             miscmp_count=int(record.get('miscmp_count') or 0),
             preventive_status=str(record.get('preventive_status') or 'unavailable'),
-            predictive_report=str(record.get('predictive_report') or ''),
             created_at=record.get('created_at'),
             engine_data=tuple(
                 item if isinstance(item, EngineData) else EngineData.from_record(item)

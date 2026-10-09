@@ -170,6 +170,8 @@ QSlider#telemetryTimeline::handle:horizontal{background:#2563eb;border:none;widt
 QSlider#telemetryTimeline::handle:horizontal:hover{background:#1d4ed8}
 QSlider#telemetryTimeline::handle:horizontal:pressed{background:#1e40af}
 QComboBox#telemetryRows{background:#ffffff;color:#1e293b;border:1px solid #94a3b8;border-radius:6px;padding:5px 8px;font-size:12px}
+QSplitter#telemetrySplitter::handle:vertical{background:#dbeafe;border-top:1px solid #93c5fd;border-bottom:1px solid #93c5fd}
+QSplitter#telemetrySplitter::handle:vertical:hover{background:#bfdbfe;border-color:#60a5fa}
 QToolButton#chartFilterButton{background:#ffffff;color:#1e293b;border:1px solid #aebed2;border-radius:7px;padding:6px 30px 6px 10px;font-weight:650;text-align:left}
 QToolButton#chartFilterButton:hover{background:#f8fbff;border-color:#7aa7e8}
 QToolButton#chartFilterButton:focus{border:2px solid #2563eb}

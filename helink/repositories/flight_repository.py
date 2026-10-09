@@ -249,8 +249,7 @@ class FlightRepository:
 
     def _save_flight(self, flight, report, message):
         existing = self.connection.execute(
-            """SELECT id, arrival_time, duration, destination, imported_files,
-                      predictive_report
+            """SELECT id, arrival_time, duration, destination, imported_files
                FROM flights
                WHERE id=? AND aircraft_id=?""",
             (flight['id'], flight['aircraft_id']),
@@ -307,13 +306,9 @@ class FlightRepository:
                 """INSERT INTO flights(
                        id, aircraft_id, flight_date, departure_time,
                        arrival_time, duration, origin, destination,
-                       imported_files, predictive_report
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    flight_id,
-                    *values,
-                    flight.get('predictive_report', ''),
-                ),
+                       imported_files
+                   ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                (flight_id, *values),
             )
 
         engine_data = flight.get('engine_data', ())
@@ -323,18 +318,18 @@ class FlightRepository:
             )
             rows = (
                 (
-                    flight_id, seq, item.get('timestamp'), item.get('OAT'),
-                    item.get('N1'), item.get('N2'), item.get('ITT'),
-                    item.get('NR'), item.get('TQ'), item.get('ENG_OT'),
+                    flight_id, seq, item.get('timestamp'),
+                    item.get('N1'), item.get('N2'), item.get('NR'),
+                    item.get('ITT'), item.get('TQ'), item.get('ENG_OT'),
                     item.get('FUEL_PRESS'), item.get('ENG_OP'),
-                    item.get('XMSN_OP'), item.get('XMSN_OT'),
+                    item.get('XMSN_OP'), item.get('XMSN_OT'), item.get('OAT'),
                 )
                 for seq, item in enumerate(engine_data)
             )
             self._executemany_batched(
                 """INSERT INTO engine_data(
-                       flight_id,seq,timestamp,oat,n1,n2,itt,nr,tq,eng_ot,
-                       fuel_press,eng_op,xmsn_op,xmsn_ot
+                       flight_id,seq,timestamp,n1,n2,nr,itt,tq,eng_ot,
+                       fuel_press,eng_op,xmsn_op,xmsn_ot,oat
                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 rows, len(engine_data), report, message,
             )
@@ -492,11 +487,4 @@ class FlightRepository:
             self.connection.executemany(
                 'DELETE FROM flights WHERE id=?',
                 [(flight_id,) for flight_id in flight_ids],
-            )
-
-    def save_report(self, flight_id, text):
-        with self.connection:
-            self.connection.execute(
-                'UPDATE flights SET predictive_report=? WHERE id=?',
-                (text, flight_id),
             )
