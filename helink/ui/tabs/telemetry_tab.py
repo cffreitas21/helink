@@ -179,7 +179,7 @@ class TelemetryTab(QWidget):
 
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
-        self.combined_card = Card('Combined Telemetry', charts)
+        self.combined_card = Card(parent=charts)
         self.combined_card.setFixedHeight(640)
         self.combined_plot = CombinedTelemetryPlot()
         self.combined_plot.setMinimumHeight(560)
@@ -187,11 +187,6 @@ class TelemetryTab(QWidget):
             'Scroll to zoom, drag to move the view, and double-click to show the full flight. '
             'Click a point or a MAX legend entry to select its timestamp.'
         )
-        combined_heading = QHBoxLayout()
-        combined_title = self.combined_card.layout.takeAt(0).widget()
-        combined_heading.addWidget(combined_title)
-        combined_heading.addStretch()
-        self.combined_card.layout.addLayout(combined_heading)
         self.combined_plot.point_selected.connect(self.slider.setValue)
         self.combined_card.layout.addWidget(self.combined_plot)
         self.combined_card.hide()
