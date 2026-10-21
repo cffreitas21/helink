@@ -759,8 +759,7 @@ def parse_files(
                 if kind == 'engine':
                     group['engine_data'].append({
                         'timestamp': _get(
-                            row, 'Timestamp', 'Lcl Time', 'Time',
-                            default='00:00:00',
+                            row, 'Timestamp', 'Lcl Time', 'Time', default='',
                         ),
                         'OAT': _num(_get(row, 'OAT')),
                         'N1': _num(_get(row, 'N1', 'Ng')),
@@ -826,25 +825,20 @@ def parse_files(
 
     flights = list(groups.values())
     for flight in flights:
-        for collection in ('engine_data', 'data_log'):
-            flight[collection].sort(
-                key=lambda item: _moment(
-                    item.get('timestamp'), flight['flight_date']
-                ) or datetime.min
-            )
+        # Keep engine samples in CSV row order: the final row defines arrival.
+        flight['data_log'].sort(
+            key=lambda item: _moment(
+                item.get('timestamp'), flight['flight_date']
+            ) or datetime.min
+        )
         if flight['data_log']:
             flight['destination'] = destination_from_gps(flight['data_log'])
         flight.pop('_exceedance_keys', None)
         flight.pop('_cas_keys', None)
-        moments = [
-            moment for collection in ('engine_data', 'data_log')
-            for item in flight[collection]
-            if (moment := _moment(
-                item.get('timestamp'), flight['flight_date']
-            )) is not None
-        ]
-        if moments:
-            flight['arrival_time'] = _clock_time(max(moments))
+        flight['arrival_time'] = (
+            _clock_time(flight['engine_data'][-1].get('timestamp'))
+            if flight['engine_data'] else ''
+        )
         flight['duration'] = (
             _duration_between(
                 flight.get('departure_time'), flight.get('arrival_time')

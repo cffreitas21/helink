@@ -67,6 +67,11 @@ class DatabaseManager:
                         'ALTER TABLE flights ADD COLUMN arrival_time TEXT'
                     )
             self._backfill_arrival_times()
+            if self.connection.execute('PRAGMA user_version').fetchone()[0] < 2:
+                with self.connection:
+                    if 'engine_data' in tables:
+                        self._align_engine_arrival_times()
+                    self.connection.execute('PRAGMA user_version=2')
             self._backfill_durations()
             if 'destination' in flight_columns and 'gps_data' in tables:
                 self._backfill_destinations()
@@ -114,34 +119,53 @@ class DatabaseManager:
         return f'{hours}h {remaining}m' if remaining else f'{hours}h'
 
     def _backfill_arrival_times(self):
-        """Derive missing arrival times from the last recorded sample."""
+        """Fill missing arrivals only from the final engine-data row."""
         flights = self.connection.execute(
-            "SELECT id FROM flights WHERE COALESCE(arrival_time, '') = ''"
+            """SELECT f.id FROM flights f
+               WHERE COALESCE(f.arrival_time, '') = ''
+                 AND EXISTS (
+                     SELECT 1 FROM engine_data e WHERE e.flight_id=f.id
+                 )"""
         ).fetchall()
         with self.connection:
             for flight in flights:
-                arrival_time = ''
-                for table in ('engine_data', 'gps_data'):
-                    rows = self.connection.execute(
-                        f'SELECT timestamp FROM {table} '
-                        'WHERE flight_id=? AND timestamp IS NOT NULL '
-                        'ORDER BY seq DESC',
-                        (flight['id'],),
-                    ).fetchall()
-                    arrival_time = next(
-                        (
-                            value for row in rows
-                            if (value := self._clock_time(row['timestamp']))
-                        ),
-                        '',
-                    )
-                    if arrival_time:
-                        break
+                engine_row = self.connection.execute(
+                    'SELECT timestamp FROM engine_data WHERE flight_id=? '
+                    'ORDER BY seq DESC, id DESC LIMIT 1',
+                    (flight['id'],),
+                ).fetchone()
+                arrival_time = (
+                    self._clock_time(engine_row['timestamp'])
+                    if engine_row is not None else ''
+                )
                 if arrival_time:
                     self.connection.execute(
                         'UPDATE flights SET arrival_time=? WHERE id=?',
                         (arrival_time, flight['id']),
                     )
+
+    def _align_engine_arrival_times(self):
+        """Correct arrivals and clear any inferred without engine data."""
+        flights = self.connection.execute(
+            """SELECT f.id, f.departure_time, f.arrival_time, f.duration,
+                      (SELECT e.timestamp FROM engine_data e
+                       WHERE e.flight_id=f.id
+                       ORDER BY e.seq DESC, e.id DESC LIMIT 1) AS last_engine
+               FROM flights f"""
+        ).fetchall()
+        for flight in flights:
+            arrival_time = self._clock_time(flight['last_engine'])
+            duration = (
+                self._duration_between(flight['departure_time'], arrival_time)
+                or 'Unable to calculate'
+            )
+            if (arrival_time, duration) != (
+                flight['arrival_time'], flight['duration'],
+            ):
+                self.connection.execute(
+                    'UPDATE flights SET arrival_time=?, duration=? WHERE id=?',
+                    (arrival_time, duration, flight['id']),
+                )
 
     def _backfill_durations(self):
         """Calculate missing duration labels from departure and arrival."""

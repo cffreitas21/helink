@@ -259,7 +259,7 @@ class FlightRepository:
     def _save_flight(self, flight, report, message):
         """Upsert one flight and replace only the imported data categories."""
         existing = self.connection.execute(
-            """SELECT id, arrival_time, duration, destination, imported_files
+            """SELECT id, destination, imported_files
                FROM flights
                WHERE id=? AND aircraft_id=?""",
             (flight['id'], flight['aircraft_id']),
@@ -276,16 +276,26 @@ class FlightRepository:
             set(old_files).union(flight.get('imported_files', ()))
         )
 
-        arrival_time = self._latest_arrival_time(
-            flight.get('departure_time'),
-            flight.get('arrival_time'),
-            self._derive_arrival_time(flight),
-            existing['arrival_time'] if existing else '',
+        engine_rows = flight.get('engine_data') or ()
+        stored_engine = (
+            self.connection.execute(
+                'SELECT timestamp FROM engine_data WHERE flight_id=? '
+                'ORDER BY seq DESC, id DESC LIMIT 1',
+                (flight_id,),
+            ).fetchone()
+            if existing and not engine_rows else None
         )
+        if engine_rows:
+            # Only the final imported engine row can define arrival.
+            arrival_time = self._clock_time(engine_rows[-1].get('timestamp'))
+        elif stored_engine is not None:
+            # Adding another file must not move an existing engine arrival.
+            arrival_time = self._clock_time(stored_engine['timestamp'])
+        else:
+            arrival_time = ''
         duration = (
             self._duration_between(flight.get('departure_time'), arrival_time)
-            or flight.get('duration', '')
-            or (existing['duration'] if existing else '')
+            or 'Unable to calculate'
         )
 
         destination = flight.get('destination', '')
@@ -454,45 +464,6 @@ class FlightRepository:
             return f'{minutes} min'
         hours, remaining = divmod(minutes, 60)
         return f'{hours}h {remaining}m' if remaining else f'{hours}h'
-
-    @classmethod
-    def _latest_arrival_time(cls, departure_time, *candidates):
-        """Choose the latest plausible arrival relative to departure."""
-        departure = cls._clock_time(departure_time)
-        valid = [value for item in candidates if (value := cls._clock_time(item))]
-        if not valid:
-            return ''
-        if not departure:
-            return valid[0]
-
-        def seconds(value):
-            """Convert a normalized candidate clock to seconds."""
-            hour, minute, second = map(int, value.split(':'))
-            return hour * 3600 + minute * 60 + second
-
-        start = seconds(departure)
-
-        def elapsed(value):
-            """Reject implausible next-day readings relative to departure."""
-            difference = (seconds(value) - start) % 86400
-            # A reading shortly before engine start is not a next-day arrival.
-            return difference if difference <= 12 * 3600 else -1
-
-        latest = max(valid, key=elapsed)
-        return latest if elapsed(latest) >= 0 else ''
-
-    @classmethod
-    def _derive_arrival_time(cls, flight):
-        """Read the last available engine or GPS timestamp in a flight."""
-        for collection in ('engine_data', 'data_log'):
-            for item in reversed(flight.get(collection, ())):
-                timestamp = (
-                    item.get('timestamp') if isinstance(item, dict)
-                    else getattr(item, 'timestamp', None)
-                )
-                if arrival_time := cls._clock_time(timestamp):
-                    return arrival_time
-        return ''
 
     def delete(self, flight_id):
         """Delete one flight; foreign keys remove its dependent records."""
