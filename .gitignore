@@ -5,5 +5,3 @@ __pycache__/
 dist/
 build/
 *.spec
-sample_data/
-tests/
